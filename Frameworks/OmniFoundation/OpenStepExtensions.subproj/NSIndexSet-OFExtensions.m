@@ -85,8 +85,8 @@ static NSRange rangeFromString(NSString *aString, NSIndexSet *errSelf, SEL errCm
         return [self initWithIndexesInRange:rangeFromString([ranges objectAtIndex:0], self, _cmd)];
 
     if ([self isKindOfClass:[NSMutableIndexSet class]]) {
-        NSMutableIndexSet *mutableSelf;
-        self = mutableSelf = [self init];
+        self = [self init];
+        NSMutableIndexSet *mutableSelf = (NSMutableIndexSet *)self;
         for(NSString *rangeString in ranges)
             [mutableSelf addIndexesInRange:rangeFromString(rangeString, self, _cmd)];
     } else {

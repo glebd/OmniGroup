@@ -34,7 +34,7 @@ RCS_ID("$Id$")
 
 @implementation OFBundledClass;
 
-static NSLock *bundleLock;
+static NSRecursiveLock *bundleLock;
 static NSMutableDictionary *bundledClassRegistry;
 static NSString *OFBundledClassDidLoadNotification;
 static NSMutableArray *immediateLoadClasses;
