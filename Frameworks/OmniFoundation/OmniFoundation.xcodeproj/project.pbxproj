@@ -1072,7 +1072,7 @@
 		343B36C6103514E40006290A /* howto-compile.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = "howto-compile.html"; sourceTree = "<group>"; };
 		343B36C7103514E40006290A /* index.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = index.html; sourceTree = "<group>"; };
 		343B36C8103514E40006290A /* mainpage_8txt.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = mainpage_8txt.html; sourceTree = "<group>"; };
-		343B36C9103514E40006290A /* struct_w128___t.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = "struct_w128___t.html"; sourceTree = "<group>"; };
+		343B36C9103514E40006290A /* struct_w128___t.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = struct_w128___t.html; sourceTree = "<group>"; };
 		343B36CA103514E40006290A /* tab_b.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = tab_b.gif; sourceTree = "<group>"; };
 		343B36CB103514E40006290A /* tab_l.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = tab_l.gif; sourceTree = "<group>"; };
 		343B36CC103514E40006290A /* tab_r.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = tab_r.gif; sourceTree = "<group>"; };
