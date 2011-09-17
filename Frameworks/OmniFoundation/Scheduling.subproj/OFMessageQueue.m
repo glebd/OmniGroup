@@ -125,7 +125,7 @@ static BOOL OFMessageQueueDebug = NO;
         [queueLock unlockWithCondition:QUEUE_HAS_INVOCATIONS];
     else
         [queueLock unlockWithCondition:QUEUE_HAS_NO_SCHEDULABLE_INVOCATIONS];
-           
+
     do {
         NSUInteger invocationIndex;
         NSUInteger queueProcessorIndex, queueProcessorCount;
@@ -179,10 +179,10 @@ static BOOL OFMessageQueueDebug = NO;
                         for (queueProcessorIndex = 0; queueProcessorIndex < queueProcessorCount; queueProcessorIndex++) {
                             if (currentGroupThreadCount >= schedulingInfo.maximumSimultaneousThreadsInGroup)
                                 break;
-    
+
                             // Get group of object queue processer is working on
                             OFMessageQueueSchedulingInfo processorSchedulingInfo = [[queueProcessors objectAtIndex:queueProcessorIndex] schedulingInfo];
-    
+
                             if (processorSchedulingInfo.group == schedulingInfo.group)
                                 currentGroupThreadCount++;
                         }
@@ -217,7 +217,7 @@ static BOOL OFMessageQueueDebug = NO;
         }
 
     } while (nextRetainedInvocation == nil);
-    
+
     if (OFMessageQueueDebug)
         NSLog(@"[%@ nextRetainedInvocation] = %@, group = %p, priority = %d, maxThreads = %d", [self shortDescription], [nextRetainedInvocation shortDescription], [nextRetainedInvocation messageQueueSchedulingInfo].group, [nextRetainedInvocation messageQueueSchedulingInfo].priority, [nextRetainedInvocation messageQueueSchedulingInfo].maximumSimultaneousThreadsInGroup);
     return nextRetainedInvocation;
@@ -232,7 +232,7 @@ static BOOL OFMessageQueueDebug = NO;
     OBPRECONDITION(aQueueEntry);
     if (!aQueueEntry)
         return;
-    
+
 #ifdef OW_DISALLOW_MULTI_THREADING
     if (self != [OFMessageQueue mainQueue]) {
 	[[OFMessageQueue mainQueue] addQueueEntry: aQueueEntry];
@@ -247,7 +247,7 @@ static BOOL OFMessageQueueDebug = NO;
 
     queueCount = [queue count];
     if (weaklyRetainedDelegate != nil && queueCount == 0)
-        retainedDelegate = [(NSObject<OFMessageQueueDelegate> *)weaklyRetainedDelegate retain];
+        retainedDelegate = [weaklyRetainedDelegate retain];
     entryIndex = queueCount;
     if (flags.schedulesBasedOnPriority) {
         // Figure out priority
@@ -299,7 +299,7 @@ static BOOL OFMessageQueueDebug = NO;
 
     if (!anObject)
         return;
-    
+
     queueEntry = [[OFInvocation alloc] initForObject:anObject nsInvocation:anInvocation];
     [self addQueueEntry:queueEntry];
     [queueEntry release];
@@ -311,7 +311,7 @@ static BOOL OFMessageQueueDebug = NO;
 
     if (!anObject)
         return;
-    
+
     queueEntry = [[OFInvocation alloc] initForObject:anObject selector:aSelector];
     [self addQueueEntry:queueEntry];
     [queueEntry release];
@@ -323,7 +323,7 @@ static BOOL OFMessageQueueDebug = NO;
 
     if (!anObject)
         return;
-    
+
     queueEntry = [[OFInvocation alloc] initForObject:anObject selector:aSelector];
     [self addQueueEntryOnce:queueEntry];
     [queueEntry release];
@@ -335,7 +335,7 @@ static BOOL OFMessageQueueDebug = NO;
 
     if (!anObject)
         return;
-    
+
     queueEntry = [[OFInvocation alloc] initForObject:anObject selector:aSelector withObject:withObject];
     [self addQueueEntry:queueEntry];
     [queueEntry release];
@@ -347,7 +347,7 @@ static BOOL OFMessageQueueDebug = NO;
 
     if (!anObject)
         return;
-    
+
     queueEntry = [[OFInvocation alloc] initForObject:anObject selector:aSelector withObject:withObject];
     [self addQueueEntryOnce:queueEntry];
     [queueEntry release];
@@ -359,7 +359,7 @@ static BOOL OFMessageQueueDebug = NO;
 
     if (!anObject)
         return;
-    
+
     queueEntry = [[OFInvocation alloc] initForObject:anObject selector:aSelector withObject:object1 withObject:object2];
     [self addQueueEntry:queueEntry];
     [queueEntry release];
@@ -371,7 +371,7 @@ static BOOL OFMessageQueueDebug = NO;
 
     if (!anObject)
         return;
-    
+
     queueEntry = [[OFInvocation alloc] initForObject:anObject selector:aSelector withObject:object1 withObject:object2];
     [self addQueueEntryOnce:queueEntry];
     [queueEntry release];
@@ -383,7 +383,7 @@ static BOOL OFMessageQueueDebug = NO;
 
     if (!anObject)
         return;
-    
+
     queueEntry = [[OFInvocation alloc] initForObject:anObject selector:aSelector withObject:object1 withObject:object2 withObject:object3];
     [self addQueueEntry:queueEntry];
     [queueEntry release];
@@ -395,7 +395,7 @@ static BOOL OFMessageQueueDebug = NO;
 
     if (!anObject)
         return;
-    
+
     queueEntry = [[OFInvocation alloc] initForObject:anObject selector:aSelector withBool:aBool];
     [self addQueueEntry:queueEntry];
     [queueEntry release];
@@ -407,7 +407,7 @@ static BOOL OFMessageQueueDebug = NO;
 
     if (!anObject)
         return;
-    
+
     queueEntry = [[OFInvocation alloc] initForObject:anObject selector:aSelector withInt:anInt];
     [self addQueueEntry:queueEntry];
     [queueEntry release];
@@ -419,7 +419,7 @@ static BOOL OFMessageQueueDebug = NO;
 
     if (!anObject)
         return;
-    
+
     queueEntry = [[OFInvocation alloc] initForObject:anObject selector:aSelector withInt:anInt withInt:anotherInt];
     [self addQueueEntry:queueEntry];
     [queueEntry release];
@@ -435,7 +435,7 @@ static BOOL OFMessageQueueDebug = NO;
 - (NSMutableDictionary *)debugDictionary;
 {
     NSMutableDictionary *debugDictionary;
-    
+
     debugDictionary = [super debugDictionary];
     [debugDictionary setObject:queue forKey:@"queue"];
     [debugDictionary setObject:[NSNumber numberWithInt:idleProcessors] forKey:@"idleProcessors"];
@@ -443,7 +443,7 @@ static BOOL OFMessageQueueDebug = NO;
     [debugDictionary setObject:flags.schedulesBasedOnPriority ? @"YES" : @"NO" forKey:@"flags.schedulesBasedOnPriority"];
     if (weaklyRetainedDelegate)
 	[debugDictionary setObject:weaklyRetainedDelegate forKey:@"weaklyRetainedDelegate"];
-    
+
     return debugDictionary;
 }
 
@@ -452,12 +452,12 @@ static BOOL OFMessageQueueDebug = NO;
 - (void)_createProcessorsForQueueSize:(NSUInteger)queueCount;
 {
     unsigned int projectedIdleProcessors;
-    
+
     [queueProcessorsLock lock];
     projectedIdleProcessors = idleProcessors;
     while (projectedIdleProcessors < queueCount && uncreatedProcessors > 0) {
         OFQueueProcessor *newProcessor;
-        
+
         newProcessor = [[OFQueueProcessor alloc] initForQueue:self];
         [newProcessor startProcessingQueueInNewThread];
         [queueProcessors addObject:newProcessor];
@@ -483,7 +483,7 @@ static BOOL OFMessageQueueDebug = NO;
 void OFQueueFunction(void (*aFunction)(void *arg), void *arg)
 {
     OFMessageQueue *queue;
-    
+
     queue = [OFMessageQueue mainQueue];
     [queue queueSelector:@selector(_callFunction:argument:) forObject:queue withInt:(int)aFunction withInt:(int)arg];
 }

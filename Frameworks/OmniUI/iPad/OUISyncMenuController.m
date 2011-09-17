@@ -20,7 +20,7 @@
 #import "OUIExportOptionsController.h"
 #import "OUIExportOptionsView.h"
 #import "OUIWebDAVConnection.h"
-#import "OUIWebDAVController.h"
+#import "OUIWebDAVSyncListController.h"
 #import "OUIWebDAVSetup.h"
 
 RCS_ID("$Id$")
@@ -72,7 +72,7 @@ RCS_ID("$Id$")
         return;
     }
     
-    self.contentSizeForViewInPopover = CGSizeMake(320, 108); // Make sure we set this before creating our popover
+    self.contentSizeForViewInPopover = CGSizeMake(320, 152); // Make sure we set this before creating our popover
     
     if (!_menuNavigationController) {
         _menuNavigationController = [[UINavigationController alloc] initWithRootViewController:self];
@@ -134,7 +134,7 @@ RCS_ID("$Id$")
 {
     // Returning a nil cell will cause UITableView to throw an exception
     if (indexPath.section != 0)
-        return [[[UITableViewCell alloc] initWithFrame:CGRectZero reuseIdentifier:nil] autorelease];
+        return [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil] autorelease];
     
     NSString *title = nil;
     NSString *description = nil;
@@ -228,9 +228,9 @@ RCS_ID("$Id$")
             [viewController release];
             return;
         } else {
-            viewController = [[OUIWebDAVController alloc] init];
-            [(OUIWebDAVController *)viewController setSyncType:indexPath.row];
-            [(OUIWebDAVController *)viewController setIsExporting:_isExporting];
+            viewController = [[OUIWebDAVSyncListController alloc] init];
+            [(OUIWebDAVSyncListController *)viewController setSyncType:indexPath.row];
+            [(OUIWebDAVSyncListController *)viewController setIsExporting:_isExporting];
         }
     } else {
         viewController = [[OUIWebDAVSetup alloc] init];

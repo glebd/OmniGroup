@@ -1,4 +1,4 @@
-// Copyright 2010 The Omni Group.  All rights reserved.
+// Copyright 2010-2011 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -18,7 +18,7 @@ extern NSString * const OUICertificateTrustUpdated;
 @private 
     NSURL *_address;
     NSString *_username;
-    NSString *_newKeychainPassword;
+    NSString *_password;
     
     OFSFileManager *_fileManager;
     NSURLAuthenticationChallenge *_authenticationChallenge;
@@ -32,7 +32,7 @@ extern NSString * const OUICertificateTrustUpdated;
 
 @property (readwrite, retain) NSURL *address;
 @property (readwrite, retain) NSString *username;
-@property (readwrite, retain) NSString *newKeychainPassword;
+@property (readwrite, retain) NSString *password;
 @property (readonly, retain) OFSFileManager *fileManager;
 @property (readonly, retain) NSURLAuthenticationChallenge *authenticationChallenge;
 

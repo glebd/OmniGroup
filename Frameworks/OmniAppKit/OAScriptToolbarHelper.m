@@ -63,9 +63,9 @@ RCS_ID("$Id$")
     while( (libraryDirectory = [libraryDirectories nextObject]) != nil ) {
         [result addObject:[[[libraryDirectory stringByAppendingPathComponent:@"Scripts"] stringByAppendingPathComponent:@"Applications"] stringByAppendingPathComponent:appSupportDirectory]];
     }
-    
+
     [result addObject:[[[NSBundle mainBundle] resourcePath] stringByAppendingPathComponent:@"Scripts"]];
-    
+
     return result;
 }
 
@@ -99,7 +99,7 @@ static NSString *removeScriptSuffix(NSString *string)
     NSString *path = [self pathForItem:item];
     if (path == nil)
         return;
-    
+
     [item setTarget:self];
     [item setAction:@selector(executeScriptItem:)];
     [item setLabel:removeScriptSuffix([item label])];
@@ -109,7 +109,7 @@ static NSString *removeScriptSuffix(NSString *string)
     [item setImage:[[NSWorkspace sharedWorkspace] iconForFile:path]];
 
     CFURLRef url = CFURLCreateWithFileSystemPath(NULL, (CFStringRef)path, kCFURLPOSIXPathStyle, false);
-    
+
     FSRef myFSRef;
     if (CFURLGetFSRef(url, &myFSRef)) {
         FSCatalogInfo catalogInfo;
@@ -118,19 +118,23 @@ static NSString *removeScriptSuffix(NSString *string)
                 [item setImage:[NSImage imageNamed:@"OAScriptIcon" inBundleForClass:[OAScriptToolbarHelper class]]];
         }
     }
-    
+
     CFRelease(url);
 }
 
 - (void)executeScriptItem:sender;
 {
     OAToolbarItem *toolbarItem = [[sender retain] autorelease];
-    OAToolbarWindowController *controller = (OAToolbarWindowController *)[[[[toolbarItem toolbar] delegate] retain] autorelease];
-    
+
+    OAToolbarWindowController *controller = (OAToolbarWindowController *)[[toolbarItem toolbar] delegate];
+    OBASSERT(!controller || [controller isKindOfClass:[OAToolbarWindowController class]]);
+
+    [[controller retain] autorelease];
+
     if ([controller respondsToSelector:@selector(scriptToolbarItemShouldExecute:)] &&
 	![controller scriptToolbarItemShouldExecute:sender])
 	return;
-    
+
     @try {
 	NSString *scriptFilename = [[self pathForItem:sender] stringByExpandingTildeInPath];
 
@@ -141,7 +145,7 @@ static NSString *removeScriptSuffix(NSString *string)
 		NSString *errorText = NSLocalizedStringFromTableInBundle(@"Unable to run workflow.", @"OmniAppKit", frameworkBundle, "workflow execution error");
 		NSString *messageText = [NSString stringWithFormat:NSLocalizedStringFromTableInBundle(@"workflow not found at %@", @"OmniAppKit", frameworkBundle, "script loading error message"), scriptFilename];
 		NSString *okButton = NSLocalizedStringFromTableInBundle(@"OK", @"OmniAppKit", frameworkBundle, "script error panel button");
-		NSBeginAlertSheet(errorText, okButton, nil, nil, [controller window], self, NULL, NULL, NULL, messageText);                                     
+		NSBeginAlertSheet(errorText, okButton, nil, nil, [controller window], self, NULL, NULL, NULL, messageText);
 		return;
 	    }
 	    NSException   *raisedException = nil;
@@ -155,31 +159,31 @@ static NSString *removeScriptSuffix(NSString *string)
 		NSString *errorText = NSLocalizedStringFromTableInBundle(@"Unable to run workflow.", @"OmniAppKit", frameworkBundle, "workflow execution error");
 		NSString *messageText = [NSString stringWithFormat:NSLocalizedStringFromTableInBundle(@"The following error was reported:\n%@", @"OmniAppKit", frameworkBundle, "script loading error message"), [raisedException reason]];
 		NSString *okButton = NSLocalizedStringFromTableInBundle(@"OK", @"OmniAppKit", frameworkBundle, "script error panel button");
-		NSBeginAlertSheet(errorText, okButton, nil, nil, [controller window], self, NULL, NULL, NULL, messageText);                                     
+		NSBeginAlertSheet(errorText, okButton, nil, nil, [controller window], self, NULL, NULL, NULL, messageText);
 	    }
 	} else {
 	    NSDictionary *errorDictionary;
 	    NSString *scriptName = [[NSFileManager defaultManager] displayNameAtPath:scriptFilename];
-	    
+
 	    // throw an error sheet if the script doesn't exist at all
-	    if (![[NSFileManager defaultManager] fileExistsAtPath:scriptFilename]) { 		
+	    if (![[NSFileManager defaultManager] fileExistsAtPath:scriptFilename]) {
 		NSString *errorText = NSLocalizedStringFromTableInBundle(@"The script file could not be opened.", @"OmniAppKit", [OAScriptToolbarHelper bundle], "script loading error");
 		NSString *messageText = NSLocalizedStringFromTableInBundle(@"The requested AppleScript does not exist", @"OmniAppKit", [OAScriptToolbarHelper bundle], "script loading error message");
 		NSString *okButton = NSLocalizedStringFromTableInBundle(@"OK", @"OmniAppKit", [OAScriptToolbarHelper bundle], "script error panel button");
-		NSBeginAlertSheet(errorText, okButton, nil, nil, [controller window], self, NULL, NULL, NULL, messageText);                                     
+		NSBeginAlertSheet(errorText, okButton, nil, nil, [controller window], self, NULL, NULL, NULL, messageText);
 		return;
 	    }
-	    
+
 	    NSAppleScript *script = [[[NSAppleScript alloc] initWithContentsOfURL:[NSURL fileURLWithPath:scriptFilename] error:&errorDictionary] autorelease];
 	    // throw an error sheet if the script exists, but was not able to be created
-	    if (script == nil) {		
+	    if (script == nil) {
 		NSString *errorText = [NSString stringWithFormat:NSLocalizedStringFromTableInBundle(@"The script file '%@' could not be opened.", @"OmniAppKit", [OAScriptToolbarHelper bundle], "script loading error"), scriptName];
 		NSString *messageText = [NSString stringWithFormat:NSLocalizedStringFromTableInBundle(@"AppleScript reported the following error:\n%@", @"OmniAppKit", [OAScriptToolbarHelper bundle], "script loading error message"), [errorDictionary objectForKey:NSAppleScriptErrorMessage]];
 		NSString *okButton = NSLocalizedStringFromTableInBundle(@"OK", @"OmniAppKit", [OAScriptToolbarHelper bundle], "script error panel button");
-		NSBeginAlertSheet(errorText, okButton, nil, nil, [controller window], self, NULL, NULL, NULL, messageText);                                     
+		NSBeginAlertSheet(errorText, okButton, nil, nil, [controller window], self, NULL, NULL, NULL, messageText);
 		return;
 	    }
-	    
+
 	    NSAppleEventDescriptor *result;
         NSAppleEventDescriptor *arguments;
         if (![controller respondsToSelector:@selector(scriptToolbarItemArguments:)] || !(arguments = [controller scriptToolbarItemArguments:sender])) {
@@ -195,13 +199,13 @@ static NSString *removeScriptSuffix(NSString *string)
             result = [script executeAppleEvent:executeEvent error:&errorDictionary];
         }
 
-	    if (result == nil) {		
+	    if (result == nil) {
 		NSString *errorText = [NSString stringWithFormat:NSLocalizedStringFromTableInBundle(@"The script '%@' could not complete.", @"OmniAppKit", [OAScriptToolbarHelper bundle], "script execute error"), scriptName];
 		NSString *messageText = [NSString stringWithFormat:NSLocalizedStringFromTableInBundle(@"AppleScript reported the following error:\n%@", @"OmniAppKit", [OAScriptToolbarHelper bundle], "script execute error message"), [errorDictionary objectForKey:NSAppleScriptErrorMessage]];
 		NSString *okButton = NSLocalizedStringFromTableInBundle(@"OK", @"OmniAppKit", [OAScriptToolbarHelper bundle], "script error panel button");
 		NSString *editButton = NSLocalizedStringFromTableInBundle(@"Edit Script", @"OmniAppKit", [OAScriptToolbarHelper bundle], "script error panel button");
-		NSBeginAlertSheet(errorText, okButton, editButton, nil, [controller window], self, @selector(errorSheetDidEnd:returnCode:contextInfo:), NULL, [scriptFilename retain], messageText);                                     
-		
+		NSBeginAlertSheet(errorText, okButton, editButton, nil, [controller window], self, @selector(errorSheetDidEnd:returnCode:contextInfo:), NULL, [scriptFilename retain], messageText);
+
 		return;
 	    }
 	}
@@ -228,7 +232,7 @@ static NSString *removeScriptSuffix(NSString *string)
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSEnumerator *folderEnumerator = [[self scriptPaths] objectEnumerator];
     NSString *scriptFolder;
-    
+
     NSMutableArray *scriptTypes = [NSMutableArray array];
     /* Note that text scripts and compiled scripts do not conform to each other */
     [scriptTypes addObjects:@"com.apple.applescript.text", @"com.apple.applescript.script", @"com.apple.automator-workflow", nil];
@@ -237,21 +241,21 @@ static NSString *removeScriptSuffix(NSString *string)
         [scriptTypes addObjectsFromArray:(NSArray *)scriptBundles];
         CFRelease(scriptBundles);
     }
-    
+
     while ((scriptFolder = [folderEnumerator nextObject])) {
         for(NSString *filename in [fileManager directoryContentsAtPath:scriptFolder
                                                                ofTypes:scriptTypes
                                                                   deep:YES
                                                               fullPath:NO
                                                                  error:NULL]) {
-	    
+
 	    NSString *itemIdentifier = [removeScriptSuffix(filename) stringByAppendingPathExtension:@"osascript"];
             if ([_pathForItemDictionary objectForKey:itemIdentifier] != nil)
                 continue; // Don't register more than one script with the same name
 
 	    NSString *path = [[scriptFolder stringByAppendingPathComponent:filename] stringByAbbreviatingWithTildeInPath];
             [_pathForItemDictionary setObject:path forKey:itemIdentifier];
-        } 
+        }
     }
 }
 
@@ -263,7 +267,7 @@ static NSString *removeScriptSuffix(NSString *string)
 {
     NSAppleEventDescriptor *descriptor = [NSAppleEventDescriptor listDescriptor];
     [descriptor insertDescriptor:[[[self window] objectSpecifier] descriptor] atIndex:0]; // 0 means "at the end"
-    
+
     return descriptor;
 }
 

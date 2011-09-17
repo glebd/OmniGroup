@@ -28,7 +28,7 @@
     UIView *_buttonGroupView;
     UIButton *_favoriteButton;
     UIButton *_exportButton;
-    UIButton *_newDocumentButton;
+    UIButton *_addDocumentButton;
     UIButton *_deleteButton;
     UITextField *_titleEditingField;
     
@@ -52,12 +52,18 @@
     
     OUIReplaceDocumentAlert *_replaceDocumentAlert;
     
+    id _applicationDidBecomeActiveObserver;
+    
     BOOL _loadingFromNib;
+    
+    // Used to map between an exportType (UTI string) and BOOL indicating if an app exists that we can send it to via Document Interaction.
+    NSMutableDictionary *_openInMapCache;
 }
 
 + (NSString *)userDocumentsDirectory;
 + (NSString *)sampleDocumentsDirectory;
 + (void)copySampleDocumentsToUserDocuments;
++ (NSString *)localizedNameForSampleDocumentNamed:(NSString *)documentName;
 
 + (NSString *)pathToSampleDocumentNamed:(NSString *)name ofType:(NSString *)fileType;
 + (NSString *)availablePathInDirectory:(NSString *)dir baseName:(NSString *)baseName extension:(NSString *)extension counter:(NSUInteger *)ioCounter;
@@ -72,7 +78,7 @@
 @property(retain) IBOutlet UIView *buttonGroupView;
 @property(retain) IBOutlet UIButton *favoriteButton;
 @property(retain) IBOutlet UIButton *exportButton;
-@property(retain) IBOutlet UIButton *newDocumentButton;
+@property(retain) IBOutlet UIButton *addDocumentButton;
 @property(retain) IBOutlet UIButton *deleteButton;
 
 @property(readonly) UITextField *titleEditingField;
@@ -109,6 +115,7 @@
 
 - (NSArray *)availableExportTypesForProxy:(OUIDocumentProxy *)proxy;
 - (NSArray *)availableImageExportTypesForProxy:(OUIDocumentProxy *)proxy;
+- (NSArray *)availableDocumentInteractionExportTypesForProxy:(OUIDocumentProxy *)proxy;
 - (OFFileWrapper *)exportFileWrapperOfType:(NSString *)exportType forProxy:(OUIDocumentProxy *)proxy error:(NSError **)outError;
 
 - (UIImage *)iconForUTI:(NSString *)fileUTI;
@@ -128,6 +135,8 @@
 - (IBAction)export:(id)sender;
 - (IBAction)emailDocument:(id)sender;
 - (void)emailExportType:(NSString *)exportType;
+- (OFFileWrapper *)fileWrapperForExportType:(NSString *)exportType;
+- (void)sendEmailWithFileWrapper:(OFFileWrapper *)fileWrapper forExportType:(NSString *)exportType;
 - (IBAction)editTitle:(id)sender;
 - (IBAction)documentSliderAction:(OUIDocumentSlider *)slider;
 - (IBAction)filterAction:(UIView *)sender;

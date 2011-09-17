@@ -8,6 +8,8 @@
 // $Id$
 
 #import <OmniFoundation/OFObject.h>
+
+#import <OmniFoundation/OFSaveType.h>
 #import <OmniUI/OUIDocumentProtocol.h>
 
 @class OUIDocumentProxy, OUIUndoIndicator, OUIDocumentViewController;
@@ -36,7 +38,7 @@
 
 @property(readonly) NSURL *url;
 @property(readonly) NSUndoManager *undoManager;
-@property(readonly) UIViewController *viewController;
+@property(readonly) UIViewController <OUIDocumentViewController> *viewController;
 
 - (BOOL)saveAsNewDocumentToURL:(NSURL *)url error:(NSError **)outError;
 
@@ -47,6 +49,7 @@
 - (BOOL)hasUnsavedChanges;
 - (BOOL)saveForClosing:(NSError **)outError;
 - (void)scheduleAutosave; // Will happen automatically for undoable changes, but for view stat changes that you want to be saved, you can call this.
+- (void)willAutosave;
 
 // Subclass responsibility
 
@@ -54,8 +57,8 @@
  self.proxy, self.url and self.undoManager will be set appropriately when this is called. If proxy is nil, this is a new document. The URL will be set no matter what.
  */
 - (BOOL)loadDocumentContents:(NSError **)outError;
-- (UIViewController *)makeViewController;
-- (BOOL)saveToURL:(NSURL *)url isAutosave:(BOOL)isAutosave error:(NSError **)outError;
+- (UIViewController <OUIDocumentViewController> *)makeViewController;
+- (BOOL)writeToURL:(NSURL *)url forSaveType:(OFSaveType)saveType error:(NSError **)outError;
 
 // Optional subclass methods
 - (void)willFinishUndoGroup;

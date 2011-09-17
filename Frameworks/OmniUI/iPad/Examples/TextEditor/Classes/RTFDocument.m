@@ -43,10 +43,10 @@ RCS_ID("$Id$");
             OBFinishPorting;
         }
         
-        _text = [[NSAttributedString alloc] initWithAttributedString:attributedString];
+        _text = [[NSMutableAttributedString alloc] initWithAttributedString:attributedString];
     } else {
         // New document
-        _text = [[NSAttributedString alloc] init];
+        _text = [[NSMutableAttributedString alloc] init];
     }
     
     return YES;
@@ -57,7 +57,7 @@ RCS_ID("$Id$");
     return [[[TextViewController alloc] init] autorelease];
 }
 
-- (BOOL)saveToURL:(NSURL *)url isAutosave:(BOOL)isAutosave error:(NSError **)outError;
+- (BOOL)writeToURL:(NSURL *)url forSaveType:(OFSaveType)saveType error:(NSError **)outError;
 {
     // TODO: Ask the text editor to finish any edits/undo groups. Might be in the middle of marked text, for example.
     // TODO: Save a preview PDF somewhere.

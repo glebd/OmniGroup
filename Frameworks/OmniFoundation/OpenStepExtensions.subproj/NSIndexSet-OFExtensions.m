@@ -1,4 +1,4 @@
-// Copyright 2008 Omni Development, Inc.  All rights reserved.
+// Copyright 2008, 2011 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -23,7 +23,7 @@ RCS_ID("$Id$")
         case 1:
             return [NSString stringWithFormat:@"%u", [self firstIndex]];
     }
-    
+
     NSMutableString *buf = [NSMutableString string];
     BOOL first = YES;
     NSUInteger cursor = [self firstIndex];
@@ -40,7 +40,7 @@ RCS_ID("$Id$")
         cursor = span.location + span.length;
         first = NO;
     }
-    
+
     return buf;
 }
 
@@ -51,7 +51,7 @@ static NSRange rangeFromString(NSString *aString, NSIndexSet *errSelf, SEL errCm
     }
 
     // For correctness, we really need an -unsignedIntegerValue on NSString which returns an NSUInteger. However, because Apple uses NSNotFound (== NSInteger's max value) as a special marker value for both NSIntegers and NSUIntegers, the useful range of an NSUInteger is actually not any larger than NSInteger's. Good work, Apple.
-    
+
     NSRange dashRange = [aString rangeOfString:@"-"];
     if (dashRange.length == 0) {
         NSInteger ix = [aString integerValue];
@@ -59,14 +59,14 @@ static NSRange rangeFromString(NSString *aString, NSIndexSet *errSelf, SEL errCm
     } else {
         NSString *left = [aString substringToIndex:dashRange.location];
         NSString *right = [aString substringFromIndex:dashRange.location + dashRange.length];
-        
+
         if ([NSString isEmptyString:left] || [NSString isEmptyString:right]) {
             OBRejectInvalidCall(errSelf, errCmd, @"Cannot parse open-ended range \"%@\"", aString);
         }
-        
+
         NSInteger leftValue = [left integerValue];
         NSInteger rightValue = [right integerValue];
-        
+
         if (rightValue < leftValue)
             OBRejectInvalidCall(errSelf, errCmd, @"Index range \"%@\" is backwards", aString);
 
@@ -79,25 +79,30 @@ static NSRange rangeFromString(NSString *aString, NSIndexSet *errSelf, SEL errCm
 {
     if ([NSString isEmptyString:aString])
         return [self init];
-    
+
     NSArray *ranges = [aString componentsSeparatedByString:@","];
     if ([ranges count] == 1)
         return [self initWithIndexesInRange:rangeFromString([ranges objectAtIndex:0], self, _cmd)];
 
     if ([self isKindOfClass:[NSMutableIndexSet class]]) {
-        self = [self init];
-        NSMutableIndexSet *mutableSelf = (NSMutableIndexSet *)self;
-        for(NSString *rangeString in ranges)
+        NSMutableIndexSet *mutableSelf = (NSMutableIndexSet *)[self init];
+        if (mutableSelf == nil)
+            return nil;
+
+        OBASSERT([mutableSelf isKindOfClass:[NSMutableIndexSet class]]);
+        for (NSString *rangeString in ranges)
             [mutableSelf addIndexesInRange:rangeFromString(rangeString, self, _cmd)];
+
+        return mutableSelf;
     } else {
         NSMutableIndexSet *temporarySet = [[NSMutableIndexSet alloc] init];
-        for(NSString *rangeString in ranges)
+        for (NSString *rangeString in ranges)
             [temporarySet addIndexesInRange:rangeFromString(rangeString, self, _cmd)];
-        self = [self initWithIndexSet:temporarySet];
+        NSIndexSet *immutableSelf = [self initWithIndexSet:temporarySet];
         [temporarySet release];
+
+        return immutableSelf;
     }
-    
-    return self;
 }
 
 + indexSetWithRangeString:(NSString *)aString;
@@ -109,32 +114,32 @@ static NSRange rangeFromString(NSString *aString, NSIndexSet *errSelf, SEL errCm
 - (NSRange)rangeGreaterThanOrEqualToIndex:(NSUInteger)fromIndex;
 {
     fromIndex = [self indexGreaterThanOrEqualToIndex:fromIndex];
-    
+
     if (fromIndex == NSNotFound) {
         return (NSRange){NSNotFound, 0};
     }
-    
+
     // There isn't a direct way to extract the next contiguous range, even though NSIndexSet's internal representation is a sorted list of ranges --- so we do a binary search for the end of this range.
-    
+
     NSRange result;
     result.location = fromIndex;
     result.length = 1;
     NSUInteger step = 1;
-    
+
     while ([self containsIndexesInRange:(NSRange){ result.location, result.length + step }]) {
         result.length += step;
         step <<= 1;
     }
     // At this point, we know that we contain the indices in the 'result' range, but somewhere in the next 'step' indices there's one missing.
     // So we can do a normal binary search within that range.
-    
+
     while(step > 1) {
         step >>= 1;
         BOOL afterFirstHalf = [self containsIndexesInRange:(NSRange){ result.location, result.length + step }];
         if (afterFirstHalf)
             result.length += step;
     }
-    
+
     return result;
 }
 
