@@ -10,6 +10,7 @@
 #import <OmniUI/OUIAppController.h>
 #import <OmniFileStore/OFSFileManager.h>
 #import <OmniFileStore/OFSFileInfo.h>
+#import <OmniFoundation/OFUTI.h>
 #import <OmniFoundation/NSString-OFReplacement.h>
 #import <OmniFoundation/OFXMLIdentifier.h>
 
@@ -25,7 +26,7 @@ RCS_ID("$Id$");
 - (void)_downloadFile:(OFSFileInfo *)aFile;
 - (NSString *)_downloadLocation;
 - (void)_readAndQueueContentsOfDirectory:(OFSFileInfo *)aDirectory;
-- (BOOL)_queueUploadFileWrapper:(OFFileWrapper *)fileWrapper atomically:(BOOL)atomically toURL:(NSURL *)targetURL usingFileManager:(OFSFileManager *)fileManager error:(NSError **)outError;
+- (BOOL)_queueUploadFileWrapper:(NSFileWrapper *)fileWrapper atomically:(BOOL)atomically toURL:(NSURL *)targetURL usingFileManager:(OFSFileManager *)fileManager error:(NSError **)outError;
 
 @end
 
@@ -80,11 +81,13 @@ RCS_ID("$Id$");
     [[NSNotificationCenter defaultCenter] postNotificationName:OUISyncDownloadCanceledNotification object:self];
 }
 
-- (void)uploadFileWrapper:(OFFileWrapper *)fileWrapper toURL:(NSURL *)targetURL;
+- (void)uploadFileWrapper:(NSFileWrapper *)fileWrapper toURL:(NSURL *)targetURL;
 {
     _totalDataLength = 0;
     _uploadOperations = [[NSMutableArray alloc] init];
     NSError *error = nil;
+    OBASSERT (_baseURL == nil);
+    _baseURL = [targetURL retain];
     if (![self _queueUploadFileWrapper:fileWrapper atomically:YES toURL:targetURL usingFileManager:[[OUIWebDAVConnection sharedConnection] fileManager] error:&error]) {
         OBASSERT(error != nil);
         OUI_PRESENT_ERROR(error);
@@ -135,6 +138,9 @@ RCS_ID("$Id$");
         return;
     }
     
+    BOOL success = YES;
+    NSDictionary *userInfo = nil;
+    
     if (operation == _downloadOperation) {
         // Our current download finished
         [_downloadStream close];
@@ -146,34 +152,17 @@ RCS_ID("$Id$");
             [_fileQueue removeObjectIdenticalTo:firstFile];
             return; // On to the next download
         }
-    } else {
-        // An upload finished
-        OBASSERT([_uploadOperations containsObjectIdenticalTo:operation]);
-        [_uploadOperations removeObjectIdenticalTo:operation];
-        if ([_uploadOperations count] != 0)
-            return; // Still waiting for more uploads
         
-        // For atomic directory wrapper uploads, move our temporary URL to our final URL
-        if (_uploadTemporaryURL != nil) {
-            [fileManager deleteURL:_uploadFinalURL error:NULL]; // Ignore delete errors
-            NSError *moveError = nil;
-            if (![fileManager moveURL:_uploadTemporaryURL toURL:_uploadFinalURL error:&moveError])
-                OUI_PRESENT_ERROR(moveError);
-            
-            [_uploadTemporaryURL release]; _uploadTemporaryURL = nil;
-            [_uploadFinalURL release]; _uploadFinalURL = nil;
-        }
-        
-        OBASSERT(_uploadTemporaryURL == nil);
-        OBASSERT(_uploadFinalURL == nil);
-    }
-    
-    {
-        // All done!
+        // all downloads are done, lets do our final cleanup
         NSString *fileName = (_baseURL ? [[_baseURL path] lastPathComponent] : [_file name]);
         NSString *localFile = [NSTemporaryDirectory() stringByAppendingPathComponent:fileName];
-        NSString *fileUTI = [OFSFileInfo UTIForFilename:fileName];
-        if (UTTypeConformsTo((CFStringRef)fileUTI, kUTTypeArchive)) {
+        NSURL *localFileURL = [NSURL fileURLWithPath:localFile];
+        NSError *utiError;
+        NSString *fileUTI = OFUTIForFileURLPreferringNative(localFileURL, &utiError);
+        if (!fileUTI) {
+            localFile = nil;
+            OUI_PRESENT_ERROR(utiError);
+        } else if (UTTypeConformsTo((CFStringRef)fileUTI, kUTTypeArchive)) {
             NSError *unarchiveError = nil;
             localFile = [self unarchiveFileAtPath:localFile error:&unarchiveError];
             if (!localFile || unarchiveError)
@@ -184,11 +173,43 @@ RCS_ID("$Id$");
             [self.cancelButton setTitle:NSLocalizedStringFromTableInBundle(@"Finished", @"OmniUI", OMNI_BUNDLE, @"finished") forState:UIControlStateNormal];
             UIImage *backgroundImage = [[UIImage imageNamed:@"OUIExportFinishedBadge.png"] stretchableImageWithLeftCapWidth:6 topCapHeight:0];
             [self.cancelButton setBackgroundImage:backgroundImage forState:UIControlStateNormal];
-            [[NSNotificationCenter defaultCenter] postNotificationName:OUISyncDownloadFinishedNotification object:self userInfo:[NSDictionary dictionaryWithObject:[NSURL fileURLWithPath:localFile] forKey:OUISyncDownloadURL]];
+            userInfo = [NSDictionary dictionaryWithObject:[NSURL fileURLWithPath:localFile] forKey:OUISyncDownloadURL];
         }
         
-        [self _cleanupWithSuccess:localFile != nil];
+        success = localFile != nil;
+
+    } else {
+        // An upload finished
+        OBASSERT([_uploadOperations containsObjectIdenticalTo:operation]);
+        [_uploadOperations removeObjectIdenticalTo:operation];
+        if ([_uploadOperations count] != 0)
+            return; // Still waiting for more uploads
+        
+        // All uploads are done if we get to here, final cleanup time!
+        // For atomic directory wrapper uploads, move our temporary URL to our final URL
+
+        if (_uploadTemporaryURL != nil) {
+            [fileManager deleteURL:_uploadFinalURL error:NULL]; // Ignore delete errors
+            NSError *moveError = nil;
+            if (![fileManager moveURL:_uploadTemporaryURL toURL:_uploadFinalURL error:&moveError]) {
+                OUI_PRESENT_ERROR(moveError);
+                success = NO;
+            }
+            
+            [_uploadTemporaryURL release];
+            _uploadTemporaryURL = nil;
+            [_uploadFinalURL release];
+            _uploadFinalURL = nil;
+        }
+        
+        userInfo = [NSDictionary dictionaryWithObject:_baseURL forKey:OUISyncDownloadURL];
+        
+        OBASSERT(_uploadTemporaryURL == nil);
+        OBASSERT(_uploadFinalURL == nil);
     }
+    
+    [[NSNotificationCenter defaultCenter] postNotificationName:OUISyncDownloadFinishedNotification object:self userInfo:userInfo];
+    [self _cleanupWithSuccess:success];
 }
 
 #pragma mark -
@@ -282,12 +303,11 @@ RCS_ID("$Id$");
             [_fileQueue addObject:fileInfo];
 }
 
-- (BOOL)_queueUploadFileWrapper:(OFFileWrapper *)fileWrapper atomically:(BOOL)atomically toURL:(NSURL *)targetURL usingFileManager:(OFSFileManager *)fileManager error:(NSError **)outError;
+- (BOOL)_queueUploadFileWrapper:(NSFileWrapper *)fileWrapper atomically:(BOOL)atomically toURL:(NSURL *)targetURL usingFileManager:(OFSFileManager *)fileManager error:(NSError **)outError;
 {
 #ifdef DEBUG_kc
     NSLog(@"DEBUG: Queueing upload to %@", [targetURL absoluteString]);
 #endif
-    
     if ([fileWrapper isDirectory]) {
         targetURL = OFSURLWithTrailingSlash(targetURL); // RFC 2518 section 5.2 says: In general clients SHOULD use the "/" form of collection names.
         NSError *error = nil;
@@ -305,7 +325,7 @@ RCS_ID("$Id$");
         
         NSDictionary *childWrappers = [fileWrapper fileWrappers];
         for (NSString *childName in childWrappers) {
-            OFFileWrapper *childWrapper = [childWrappers objectForKey:childName];
+            NSFileWrapper *childWrapper = [childWrappers objectForKey:childName];
             NSURL *childURL = OFSFileURLRelativeToDirectoryURL(parentURL, childName);;
             if (![self _queueUploadFileWrapper:childWrapper atomically:NO toURL:childURL usingFileManager:fileManager error:outError])
                 return NO;

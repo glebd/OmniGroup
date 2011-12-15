@@ -38,6 +38,8 @@ NB also, if this dictionary changes, the OmniBundlePreferences bundle (in OmniCo
 */
     
 
+static NSString * const PathBundleDescriptionKey = @"path";
+
 @interface OFBundleRegistry (Private)
 + (void)readConfigDictionary;
 + (NSArray *)standardPath;
@@ -191,6 +193,11 @@ NSString * const OFBundleRegistryDisabledBundlesDefaultsKey = @"DisabledBundles"
 static NSDictionary *configDictionary = nil;
 static BOOL OFBundleRegistryDebug = NO;
 
+static NSString *_normalizedPath(NSString *path)
+{
+    return [[[path stringByExpandingTildeInPath] stringByResolvingSymlinksInPath] stringByStandardizingPath];
+}
+
 + (void)readConfigDictionary;
 {
     NSString *logBundleRegistration;
@@ -226,7 +233,7 @@ static BOOL OFBundleRegistryDebug = NO;
     // Use the controllingBundle in case we are a unit test.
 #ifdef OF_BUNDLE_REGISTRY_DYNAMIC_BUNDLE_LOADING
     NSBundle *mainBundle = [OFController controllingBundle];
-    NSString *mainBundlePath = [mainBundle bundlePath];
+    NSString *mainBundlePath = _normalizedPath([mainBundle bundlePath]);
     NSString *mainBundleResourcesPath = [[mainBundlePath stringByAppendingPathComponent:@"Contents"] stringByAppendingPathComponent:@"PlugIns"];
 #endif
 
@@ -242,7 +249,7 @@ static BOOL OFBundleRegistryDebug = NO;
                 [newPath addObject:mainBundlePath];
 #ifdef DEBUG
                 // Also look next to the controlling bundle in DEBUG builds. This allows us to find locally built copies of plugins in development.
-                [newPath addObject:[[[OFController controllingBundle] bundlePath] stringByDeletingLastPathComponent]];
+                [newPath addObject:[_normalizedPath([[OFController controllingBundle] bundlePath]) stringByDeletingLastPathComponent]];
 #endif
 #endif
             } else
@@ -309,10 +316,10 @@ static BOOL OFBundleRegistryDebug = NO;
     for (NSDictionary *bundleDict in knownBundles) {
         NSString *aPath;
         
-        aPath = [bundleDict objectForKey:@"path"];
+        aPath = _normalizedPath([bundleDict objectForKey:PathBundleDescriptionKey]);
         if (aPath)
             [seenPaths addObject:aPath];
-        aPath = [[bundleDict objectForKey:@"path"] bundlePath];
+        aPath = _normalizedPath([[bundleDict objectForKey:PathBundleDescriptionKey] bundlePath]);
         if (aPath)
             [seenPaths addObject:aPath];
     }
@@ -345,7 +352,7 @@ static BOOL OFBundleRegistryDebug = NO;
 #else
         NSBundle *mainBundle = [NSBundle mainBundle];
 #endif
-        NSString *mainBundlePath = [mainBundle bundlePath];
+        NSString *mainBundlePath = _normalizedPath([mainBundle bundlePath]);
         expandedDirectoryPath = [mainBundlePath stringByAppendingPathComponent:expandedDirectoryPath];
     }
 
@@ -378,7 +385,7 @@ static BOOL OFBundleRegistryDebug = NO;
             continue;
 
         NSMutableDictionary *description = [NSMutableDictionary dictionary];
-        [description setObject:bundlePath forKey:@"path"];
+        [description setObject:bundlePath forKey:PathBundleDescriptionKey];
         [bundles addObject:description];
 
 #ifdef OF_BUNDLE_REGISTRY_DYNAMIC_BUNDLE_LOADING
@@ -461,9 +468,9 @@ static BOOL OFBundleRegistryDebug = NO;
         NSString *thisBundlePath;
         NSString *thisBundleName;
 
-        thisBundlePath = [bundleDescription objectForKey:@"path"];
+        thisBundlePath = [bundleDescription objectForKey:PathBundleDescriptionKey];
         if (!thisBundlePath)
-            thisBundlePath = [[bundleDescription objectForKey:@"bundle"] bundlePath];
+            thisBundlePath = _normalizedPath([[bundleDescription objectForKey:@"bundle"] bundlePath]);
         if (!thisBundlePath)
             continue; // ??!!
 
@@ -487,12 +494,34 @@ static BOOL OFBundleRegistryDebug = NO;
 
     // this is just temporary ...wim
     if (bundle) {
-        bundlePath = [bundleDescription objectForKey:@"path"];
+        bundlePath = [bundleDescription objectForKey:PathBundleDescriptionKey];
         if (bundlePath && ![bundlePath isEqual:[bundle bundlePath]])
             NSLog(@"OFBundleRegistry: warning: %@ != %@", bundlePath, [bundle bundlePath]);
     }
     
     bundlePath = bundle ? [bundle bundlePath] : NSLocalizedStringFromTableInBundle(@"local configuration file", @"OmniFoundation", [OFBundleRegistry bundle], @"local bundle path readable string");
+
+    // To facilitate sharing default registrations between Mac frameworks and iOS apps that link them as static libraries (but don't get the Info.plist), we allow putting the shared defaults in *.defaults resources.
+    // We do this before the entries from the bundle infoDictionary so that the main app can override defaults from static libraries.
+    for (NSString *path in [bundle pathsForResourcesOfType:@"defaults" inDirectory:nil]) {
+        NSError *error = nil;
+        
+        CFPropertyListRef plist = OFCreatePropertyListFromFile((CFStringRef)path, kCFPropertyListImmutable, (CFErrorRef *)&error);
+        if (!plist) {
+            NSLog(@"Unable to parse %@ as a property list: %@", path, [error toPropertyList]);
+            [error release];
+            continue;
+        }
+        
+        if (![(id)plist isKindOfClass:[NSDictionary class]]) {
+            NSLog(@"Contents of %@ is not a dictionary.", path);
+            CFRelease(plist);
+            continue;
+        }
+        
+        [NSUserDefaults registerItemName:OFUserDefaultsRegistrationItemName bundle:bundle description:(NSDictionary *)plist];
+        CFRelease(plist);
+    }
 
     for (NSString *registrationClassName in registrationClassToOptionsDictionary) {
         NSDictionary *registrationDictionary = [registrationClassToOptionsDictionary objectForKey:registrationClassName];
@@ -515,28 +544,7 @@ static BOOL OFBundleRegistryDebug = NO;
                 NSLog(@"+[%@ registerItemName:%@ bundle:%@ description:%@]: %@", [registrationClass description], [itemName description], [bundle description], [descriptionDictionary description], [exc reason]);
             };
         }
-    }
-    
-    // To facilitate sharing default registrations between Mac frameworks and iOS apps that link them as static libraries (but don't get the Info.plist), we allow putting the shared defaults in *.defaults resources.
-    for (NSString *path in [bundle pathsForResourcesOfType:@"defaults" inDirectory:nil]) {
-        NSError *error = nil;
-        
-        CFPropertyListRef plist = OFCreatePropertyListFromFile((CFStringRef)path, kCFPropertyListImmutable, (CFErrorRef *)&error);
-        if (!plist) {
-            NSLog(@"Unable to parse %@ as a property list: %@", path, [error toPropertyList]);
-            [error release];
-            continue;
-        }
-        
-        if (![(id)plist isKindOfClass:[NSDictionary class]]) {
-            NSLog(@"Contents of %@ is not a dictionary.", path);
-            CFRelease(plist);
-            continue;
-        }
-        
-        [NSUserDefaults registerItemName:OFUserDefaultsRegistrationItemName bundle:bundle description:(NSDictionary *)plist];
-        CFRelease(plist);
-    }
+    }    
 }
 
 + (void)registerBundles:(NSArray *)bundleDescriptions
@@ -553,7 +561,7 @@ static BOOL OFBundleRegistryDebug = NO;
         
         NSBundle *bundle = [description objectForKey:@"bundle"];
 
-        NSString *bundlePath = [bundle bundlePath];
+        NSString *bundlePath = _normalizedPath([bundle bundlePath]);
         NSString *bundleName = [bundlePath lastPathComponent];
         NSString *bundleIdentifier = [bundle bundleIdentifier];
         if ([NSString isEmptyString:bundleIdentifier])

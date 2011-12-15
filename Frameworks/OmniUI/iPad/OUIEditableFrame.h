@@ -53,9 +53,14 @@
     UIEdgeInsets _currentTextInset;
     UITextGranularity tapSelectionGranularity;
     BOOL _autoCorrectDoubleSpaceToPeriodAtSentenceEnd;
+    UIView *_inputView;
+    UIView *_inputAccessoryView;
     
     UITextAutocorrectionType _autocorrectionType;
     UITextAutocapitalizationType _autocapitalizationType;
+#if defined(__IPHONE_5_0) && (__IPHONE_5_0 <= __IPHONE_OS_VERSION_MAX_ALLOWED)
+    UITextSpellCheckingType _spellCheckingType;
+#endif
     UIKeyboardType _keyboardType;
     
     /* The cached typeset frame. */
@@ -91,6 +96,7 @@
         // Information about our content
         unsigned immutableContentHasAttributeTransforms:1;     // False if our -attributedText isn't a simple subrange of immutableContent
         unsigned mayHaveBackgroundRanges:1;                    // True unless we know we don't have any ... .
+        unsigned loadingFromNib:1; // Set in initWithCoder. Used to delay registration for scroll notifications until after any parent view's delegates have been set.
     } flags;
     
     // Range selection adjustment and display
@@ -147,7 +153,13 @@
 @property (nonatomic) BOOL autoCorrectDoubleSpaceToPeriodAtSentenceEnd;
 @property (nonatomic) UITextAutocorrectionType autocorrectionType;  // defaults to UITextAutocorrectionTypeNo
 @property (nonatomic) UITextAutocapitalizationType autocapitalizationType; // defaults to UITextAutocapitalizationTypeNone
+#if defined(__IPHONE_5_0) && (__IPHONE_5_0 <= __IPHONE_OS_VERSION_MAX_ALLOWED)
+@property (nonatomic) UITextSpellCheckingType spellCheckingType; // default is UITextSpellCheckingTypeDefault;
+#endif
 @property (nonatomic) UITextGranularity tapSelectionGranularity;
+
+@property (nonatomic, readwrite, retain) UIView *inputView;
+@property (nonatomic, readwrite, retain) UIView *inputAccessoryView;
 
 - (OUEFTextRange *)rangeOfLineContainingPosition:(OUEFTextPosition *)posn;
 - (UITextRange *)selectionRangeForPoint:(CGPoint)p granularity:(UITextGranularity)granularity;
@@ -181,7 +193,8 @@
 - (id <NSObject>)attribute:(NSString *)attr inRange:(UITextRange *)r;
 - (void)setValue:(id)value forAttribute:(NSString *)attr inRange:(UITextRange *)r;
 
-- (BOOL)hasTouchesForEvent:(UIEvent *)event;
+//- (BOOL)hasTouchesForEvent:(UIEvent *)event;
+- (BOOL)hasTouch:(UITouch *)touch;
 - (BOOL)hasTouchByGestureRecognizer:(UIGestureRecognizer *)recognizer;
 
 - (NSArray *)inspectableTextSpans;    // returns set of OUEFTextSpans 

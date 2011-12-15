@@ -63,6 +63,9 @@ extern NSString *OFUniqueMachineIdentifier(void);
 // A name which identifies this computer.
 extern NSString *OFHostName(void);
 
+// The local hostname - even if we have a FQDN
+extern NSString *OFLocalHostName(void);
+
 // Utilities for dealing with language names and ISO codes. If either function fails to find a translation match, it'll return its argument.
 extern NSString *OFISOLanguageCodeForEnglishName(NSString *languageName);
 extern NSString *OFLocalizedNameForISOLanguageCode(NSString *languageCode);
@@ -102,10 +105,8 @@ static inline NSUInteger OFHashUIntptr(uintptr_t v)
     }
 }
 
-#ifdef NS_BLOCKS_AVAILABLE
 typedef BOOL (^OFPredicateBlock)(id object);
 typedef id (^OFObjectToObjectBlock)(id anObject);
-#endif
 
 /* NSFoundationVersionNumber values for various OS releases (since Apple only ever includes past releases in the headers, and we often want to know the current or even a "future" (from this SDK's viewpoint) version number) */
 #define OFFoundationVersionNumber10_4_11 NSFoundationVersionNumber10_4_11

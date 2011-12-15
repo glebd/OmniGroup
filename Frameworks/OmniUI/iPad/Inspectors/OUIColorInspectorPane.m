@@ -61,15 +61,15 @@ RCS_ID("$Id$");
     
     OUIInspectorSlice <OUIColorInspectorPaneParentSlice> *slice = (OUIInspectorSlice <OUIColorInspectorPaneParentSlice> *)self.parentSlice;
     
-    if (_currentColorPicker) {
-        [self removeChildViewController:_currentColorPicker animated:NO];
-        [_currentColorPicker.view removeFromSuperview];
-    }
-    
-    [_currentColorPicker release];
+    UIViewController *previousColorPicker = _currentColorPicker; // Released below.
     _currentColorPicker = [colorPicker retain];
+    if (previousColorPicker)
+        [previousColorPicker willMoveToParentViewController:nil];
     
+    // Set up the new view
+    UIView *pickerView;
     if (_currentColorPicker) {
+        [self addChildViewController:_currentColorPicker];
         _currentColorPicker.selectionValue = slice.selectionValue;
         
         // leaves the inspector at the same height if we somehow get no selection, which we shouldn't
@@ -78,23 +78,41 @@ RCS_ID("$Id$");
         CGRect typeFrame = _colorTypeSegmentedControl.frame;
         
         // Keep only the height of the picker's view
-        UIView *pickerView = _currentColorPicker.view;
-        
+        pickerView = _currentColorPicker.view;
+
         UIView *view = self.view;
         CGRect frame = view.frame;
-
+        
         CGFloat yOffset = CGRectGetMaxY(typeFrame) + kSpaceBetweenSegmentedControllAndColorPicker - CGRectGetMinY(frame);
         CGRect segmentedControlAndPaddingFrame, pickerFrame;
         CGRectDivide(view.frame, &segmentedControlAndPaddingFrame, &pickerFrame, yOffset, CGRectMinYEdge);
         
         pickerView.frame = pickerFrame;
-        [view insertSubview:pickerView belowSubview:self.shadowDivider];
-        [view layoutIfNeeded];
-
-        [self addChildViewController:_currentColorPicker animated:NO];
     }
-    
-    [_shadowDivider setHidden:(_currentColorPicker != _paletteColorPicker)];
+
+    if (_currentColorPicker) {
+        pickerView.alpha = 0.0;
+        [self.view insertSubview:pickerView belowSubview:self.shadowDivider];
+    }
+
+    void (^viewChangeAnimation)(void) = ^{
+        if (previousColorPicker)
+            previousColorPicker.view.alpha = 0.0;
+        if (_currentColorPicker)
+            pickerView.alpha = 1.0;
+        [_shadowDivider setHidden:(_currentColorPicker != _paletteColorPicker)];
+    };
+
+    void (^viewChangeCompletionHandler)(BOOL) = ^(BOOL didComplete){
+        if (previousColorPicker)
+            [previousColorPicker.view removeFromSuperview];
+        [previousColorPicker removeFromParentViewController];
+        [previousColorPicker release];
+        [_currentColorPicker didMoveToParentViewController:self];
+    };
+
+    UIViewAnimationOptions animationOptions = UIViewAnimationOptionLayoutSubviews | UIViewAnimationOptionTransitionCrossDissolve | UIViewAnimationOptionAllowAnimatedContent;
+    [UIView animateWithDuration:OUICrossFadeDuration delay:0 options:animationOptions animations:viewChangeAnimation completion:viewChangeCompletionHandler];
 }
 
 - (NSString *)selectedColorPickerIdentifier;
@@ -160,7 +178,7 @@ RCS_ID("$Id$");
     OBASSERT(slice);
     if (slice.allowsNone)
         [_colorTypeSegmentedControl addSegmentWithImageNamed:@"OUIColorInspectorNoneSegment.png" representedObject:_noneColorPicker];
-    
+
     [_colorTypeSegmentedControl addSegmentWithImageNamed:@"OUIColorInspectorPaletteSegment.png" representedObject:_paletteColorPicker];
     [_colorTypeSegmentedControl addSegmentWithImageNamed:@"OUIColorInspectorHSVSegment.png" representedObject:_hsvColorPicker];
     [_colorTypeSegmentedControl addSegmentWithImageNamed:@"OUIColorInspectorRGBSegment.png" representedObject:_rgbColorPicker];
@@ -168,6 +186,13 @@ RCS_ID("$Id$");
     
     _colorTypeSegmentedControl.selectedSegment = [_colorTypeSegmentedControl segmentAtIndex:_colorTypeIndex];
     [self _setSelectedColorTypeIndex:_colorTypeIndex];
+    
+    // Needed to chain -changeColor: up to us from the color pickers.
+    NSUInteger segmentIndex = [_colorTypeSegmentedControl segmentCount];
+    while (segmentIndex--) {
+        OUIColorPicker *picker = [_colorTypeSegmentedControl segmentAtIndex:segmentIndex].representedObject;
+        picker.target = self;
+    }
 }
 
 - (void)viewWillAppear:(BOOL)animated;

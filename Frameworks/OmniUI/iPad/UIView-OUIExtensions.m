@@ -110,19 +110,46 @@ static void OUIViewPerformPosing(void)
 
 #endif
 
-- (UIImage *)snapshotImage;
+- (UIImage *)snapshotImageWithSize:(CGSize)imageSize;
 {
-    UIImage *image;
-    CGRect bounds = self.bounds;
+    OBPRECONDITION(imageSize.width >= 1);
+    OBPRECONDITION(imageSize.height >= 1);
     
-    OUIGraphicsBeginImageContext(bounds.size);
+    [self layoutIfNeeded];
+    
+    UIImage *image;
+    
+    CGRect bounds = self.bounds;
+    OBASSERT(bounds.size.width >= 1);
+    OBASSERT(bounds.size.height >= 1);
+    
+    OUIGraphicsBeginImageContext(imageSize);
     {
-        [self drawRect:bounds];
+        CGContextRef ctx = UIGraphicsGetCurrentContext();
+        CGContextTranslateCTM(ctx, -bounds.origin.x, -bounds.origin.y);
+        CGContextScaleCTM(ctx, imageSize.width / bounds.size.width, imageSize.height / bounds.size.height);
+        
+        [[self layer] renderInContext:ctx];
+        
         image = UIGraphicsGetImageFromCurrentImageContext();
     }
     OUIGraphicsEndImageContext();
     
     return image;
+}
+
+- (UIImage *)snapshotImageWithScale:(CGFloat)scale;
+{
+    CGRect bounds = self.bounds;
+    CGSize imageSize = CGSizeMake(ceil(bounds.size.width * scale),
+                                  ceil(bounds.size.height * scale));
+    
+    return [self snapshotImageWithSize:imageSize];
+}
+
+- (UIImage *)snapshotImage;
+{
+    return [self snapshotImageWithScale:1.0];
 }
 
 - (id)containingViewOfClass:(Class)cls; // can return self
@@ -440,14 +467,34 @@ void OUIWithoutAnimating(void (^actions)(void))
     }
 }
 
+void OUIWithoutLayersAnimating(void (^actions)(void))
+{
+    [CATransaction begin];
+    [CATransaction setValue:(id)kCFBooleanTrue forKey:kCATransactionDisableActions];
+    actions();
+    [CATransaction commit];
+}
+
+void OUIWithLayerAnimationsDisabled(BOOL disabled, void (^actions)(void))
+{
+    if (disabled)
+        OUIWithoutLayersAnimating(actions);
+    else
+        actions();
+}
+
 void OUIWithAppropriateLayerAnimations(void (^actions)(void))
 {
     BOOL shouldAnimate = [UIView areAnimationsEnabled];
-    
-    [CATransaction begin];
-    [CATransaction setValue:shouldAnimate ? (id)kCFBooleanFalse : (id)kCFBooleanTrue forKey:kCATransactionDisableActions];
-    actions();
-    [CATransaction commit];
+    OUIWithLayerAnimationsDisabled(shouldAnimate == NO, actions);
+}
+
+// A (hopefully) rarely needed hack, given a name here to make it a bit more clear what is happening.
+void OUIDisplayNeededViews(void)
+{
+    // The view/layer rendering trigger is registered as run loop observer on the main thread. Poke it.
+    OBPRECONDITION([NSThread isMainThread]);
+    [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantPast]];
 }
 
 #endif

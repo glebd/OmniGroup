@@ -7,7 +7,7 @@
 //
 // $Id$
 
-#import <UIKit/UIViewController.h>
+#import <OmniUI/OUIViewController.h>
 
 @class OUIInspectorSelectionValue, OUIColorInspectorPane;
 
@@ -17,11 +17,14 @@ typedef enum {
     OUIColorPickerFidelityExact, // can represent the color exactly
 } OUIColorPickerFidelity;
 
-@interface OUIColorPicker : UIViewController
+@interface OUIColorPicker : OUIViewController
 {
 @private
     OUIInspectorSelectionValue *_selectionValue;
+    id _nonretained_target;
 }
+
+@property(assign,nonatomic) IBOutlet id target; // We'll send -changeColor: to this when swatches are tapped
 
 @property(retain,nonatomic) OUIInspectorSelectionValue *selectionValue;
 

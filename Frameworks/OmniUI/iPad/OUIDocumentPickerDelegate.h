@@ -7,47 +7,47 @@
 //
 // $Id$
 
-@class OFFileWrapper;
-@class OUIDocumentPicker, OUIDocumentProxy;
-
-#import <OmniUI/OUIDocumentProtocol.h>
+@class NSFileWrapper;
+@class OUIDocumentPicker, OFSDocumentStoreFileItem;
 
 @protocol OUIDocumentPickerDelegate <NSObject>
-- (Class)documentPicker:(OUIDocumentPicker *)picker proxyClassForURL:(NSURL *)proxyURL;
-- (NSString *)documentPickerBaseNameForNewFiles:(OUIDocumentPicker *)picker;
-- (BOOL)createNewDocumentAtURL:(NSURL *)url error:(NSError **)outError;
 
 @optional
 
-- (NSString *)documentPickerDocumentTypeForNewFiles:(OUIDocumentPicker *)picker;
-
-- (void)documentPicker:(OUIDocumentPicker *)picker scannedProxies:(NSSet *)proxies;
-
-- (void)documentPicker:(OUIDocumentPicker *)picker didSelectProxy:(OUIDocumentProxy *)proxy;
+// Open
+- (void)documentPicker:(OUIDocumentPicker *)picker openTappedFileItem:(OFSDocumentStoreFileItem *)fileItem;
+- (void)documentPicker:(OUIDocumentPicker *)picker openCreatedFileItem:(OFSDocumentStoreFileItem *)fileItem;
 
 // Export
-- (NSArray *)documentPicker:(OUIDocumentPicker *)picker availableExportTypesForProxy:(OUIDocumentProxy *)proxy;
-- (OFFileWrapper *)documentPicker:(OUIDocumentPicker *)picker exportFileWrapperOfType:(NSString *)fileType forProxy:(OUIDocumentProxy *)proxy error:(NSError **)outError;
+- (NSArray *)documentPicker:(OUIDocumentPicker *)picker availableExportTypesForFileItem:(OFSDocumentStoreFileItem *)fileItem withSyncType:(OUISyncType)syncType exportOptionsType:(OUIExportOptionsType)exportOptionsType;
+- (void)documentPicker:(OUIDocumentPicker *)picker exportFileWrapperOfType:(NSString *)fileType forFileItem:(OFSDocumentStoreFileItem *)fileItem withCompletionHandler:(void (^)(NSFileWrapper *fileWrapper, NSError *error))completionHandler;
 - (BOOL)documentPicker:(OUIDocumentPicker *)picker canUseEmailBodyForType:(NSString *)fileType;
 
 // Specific export types (for backwards compatibility)
-- (NSData *)documentPicker:(OUIDocumentPicker *)picker PDFDataForProxy:(OUIDocumentProxy *)proxy error:(NSError **)outError;
-- (NSData *)documentPicker:(OUIDocumentPicker *)picker PNGDataForProxy:(OUIDocumentProxy *)proxy error:(NSError **)outError;
+- (NSData *)documentPicker:(OUIDocumentPicker *)picker PDFDataForFileItem:(OFSDocumentStoreFileItem *)fileItem error:(NSError **)outError;
+- (NSData *)documentPicker:(OUIDocumentPicker *)picker PNGDataForFileItem:(OFSDocumentStoreFileItem *)fileItem error:(NSError **)outError;
+
+- (NSData *)documentPicker:(OUIDocumentPicker *)picker copyAsImageDataForFileItem:(OFSDocumentStoreFileItem *)fileItem error:(NSError **)outError;
 
 // For the export button. If implemented, a 'Send to Camera Roll' item will be in the menu. Can return nil to have a default implementation of using the document's preview, scaled to fit the current device orientation.
-- (UIImage *)documentPicker:(OUIDocumentPicker *)picker cameraRollImageForProxy:(OUIDocumentProxy *)proxy;
+- (UIImage *)documentPicker:(OUIDocumentPicker *)picker cameraRollImageForFileItem:(OFSDocumentStoreFileItem *)fileItem;
 
 // On the iPad, it won't let you show the print panel form a sheet, so we go from the action sheet to another popover
-- (void)documentPicker:(OUIDocumentPicker *)picker printProxy:(OUIDocumentProxy *)proxy fromButton:(UIButton *)aButton;
+- (void)documentPicker:(OUIDocumentPicker *)picker printFileItem:(OFSDocumentStoreFileItem *)fileItem fromButton:(UIBarButtonItem *)aButton;
 
 // Title of the print button in the action menu
-- (NSString *)documentPicker:(OUIDocumentPicker *)picker printButtonTitleForProxy:(OUIDocumentProxy *)proxy;
+- (NSString *)documentPicker:(OUIDocumentPicker *)picker printButtonTitleForFileItem:(OFSDocumentStoreFileItem *)fileItem;
 
 // Hook for custom export options
-- (void)documentPicker:(OUIDocumentPicker *)picker addExportActionsToSheet:(UIActionSheet *)actionSheet invocations:(NSMutableArray *)invocations;
+- (void)documentPicker:(OUIDocumentPicker *)picker addExportActions:(void (^)(NSString *title, void (^action)(void)))addAction;
 
 - (UIImage *)documentPicker:(OUIDocumentPicker *)picker iconForUTI:(CFStringRef)fileUTI;        // used by the export file browser
 - (UIImage *)documentPicker:(OUIDocumentPicker *)picker exportIconForUTI:(CFStringRef)fileUTI;  // used by the large export options buttons
 - (NSString *)documentPicker:(OUIDocumentPicker *)picker labelForUTI:(CFStringRef)fileUTI;
+
+- (void)documentPicker:(OUIDocumentPicker *)picker makeToolbarItems:(NSMutableArray *)toolbarItems;
+- (NSString *)documentPicker:(OUIDocumentPicker *)picker toolbarPromptForRenamingFileItem:(OFSDocumentStoreFileItem *)fileItem;
+
+- (NSString *)documentPickerMainToolbarTitle:(OUIDocumentPicker *)picker;
 
 @end

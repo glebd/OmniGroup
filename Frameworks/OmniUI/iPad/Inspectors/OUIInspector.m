@@ -17,12 +17,11 @@
 
 RCS_ID("$Id$");
 
-OBDEPRECATED_METHODS(OUIInspectorDelegate)
-- (NSString *)inspectorTitle:(OUIInspector *)inspector; // --> inspector:titleForPane:, taking an OUIInspectorPane
-- (NSArray *)inspectorSlices:(OUIInspector *)inspector; // --> inspector:makeAvailableSlicesForStackedSlicesPane:, taking an OUIStackedSlicesInspectorPane
-- (NSArray *)inspector:(OUIInspector *)inspector slicesForStackedSlicesPane:(OUIStackedSlicesInspectorPane *)pane; // -> -inspector:makeAvailableSlicesForStackedSlicesPane:
-- (void)updateInterfaceFromInspectedObjects; // -> -updateInterfaceFromInspectedObjects:
-@end
+// OUIInspectorDelegate
+OBDEPRECATED_METHOD(-inspectorTitle:); // --> inspector:titleForPane:, taking an OUIInspectorPane
+OBDEPRECATED_METHOD(-inspectorSlices:); // --> inspector:makeAvailableSlicesForStackedSlicesPane:, taking an OUIStackedSlicesInspectorPane
+OBDEPRECATED_METHOD(-inspector:slicesForStackedSlicesPane:); // -> -inspector:makeAvailableSlicesForStackedSlicesPane:
+OBDEPRECATED_METHOD(-updateInterfaceFromInspectedObjects); // -> -updateInterfaceFromInspectedObjects:
 
 @interface OUIInspectorPopoverController : UIPopoverController
 @property(nonatomic,assign) BOOL lockContentSize;
@@ -73,6 +72,8 @@ OBDEPRECATED_METHODS(OUIInspectorDelegate)
 // Might want to make this variable, but at least let's only hardcode it in one spot. Popovers are required to be between 320 and 600; let's shoot for the minimum.
 const CGFloat OUIInspectorContentWidth = 320;
 
+const NSTimeInterval OUICrossFadeDuration = 0.2;
+
 NSString * const OUIInspectorDidPresentNotification = @"OUIInspectorDidPresentNotification";
 
 NSString * const OUIInspectorWillBeginChangingInspectedObjectsNotification = @"OUIInspectorWillBeginChangingInspectedObjectsNotification";
@@ -80,11 +81,12 @@ NSString * const OUIInspectorDidEndChangingInspectedObjectsNotification = @"OUII
 
 @implementation OUIInspector
 
-+ (OUIBarButtonItem *)inspectorBarButtonItemWithTarget:(id)target action:(SEL)action;
++ (UIBarButtonItem *)inspectorBarButtonItemWithTarget:(id)target action:(SEL)action;
 {
     UIImage *image = [UIImage imageNamed:@"OUIToolbarInfo.png"];
     OBASSERT(image);
-    return [[[OUIBarButtonItem alloc] initWithImage:image style:UIBarButtonItemStylePlain target:target action:action] autorelease];
+    UIBarButtonItem *item = [[[UIBarButtonItem alloc] initWithImage:image style:UIBarButtonItemStylePlain target:target action:action] autorelease];
+    return item;
 }
 
 + (UIColor *)disabledLabelTextColor;

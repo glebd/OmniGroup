@@ -102,6 +102,14 @@ static id _commonInit(OUIColorSwatchPicker *self)
     self.colors = [NSArray arrayWithObjects:color, nil];
 }
 
+@synthesize target = _nonretained_target;
+- (void)setTarget:(id)target;
+{
+    OBPRECONDITION(!target || (_showsSingleSwatch && [target respondsToSelector:@selector(showDetails:)]) || (!_showsSingleSwatch && [target respondsToSelector:@selector(changeColor:)])); // Later we could make the action configurable too...
+    
+    _nonretained_target = target;
+}
+
 @synthesize showsSingleSwatch = _showsSingleSwatch;
 - (void)setShowsSingleSwatch:(BOOL)showsSingleSwatch;
 {
@@ -230,9 +238,21 @@ static void _configureSwatchView(OUIColorSwatchPicker *self, UIView *swatchView,
 static OUIColorSwatch *_newSwatch(OUIColorSwatchPicker *self, OQColor *color, CGPoint *offset, CGSize size)
 {
     OUIColorSwatch *swatch = [(OUIColorSwatch *)[OUIColorSwatch alloc] initWithColor:color];
+    
+    [swatch addTarget:self action:@selector(_swatchTouchDown:) forControlEvents:UIControlEventTouchDown];
+    
     swatch.selected = _colorsMatch(color, self->_swatchSelectionColor);
     _configureSwatchView(self, swatch, offset, size);
     return swatch;
+}
+
+- (void)_swatchTouchDown:(OUIColorSwatch *)swatch;
+{
+    if (_showsSingleSwatch || swatch == _navigationButton) {
+        if (![[UIApplication sharedApplication] sendAction:@selector(showDetails:) to:_nonretained_target from:swatch forEvent:nil])
+            NSLog(@"Unable to find target for -showDetails: on color swatch tap.");
+    } else if (![[UIApplication sharedApplication] sendAction:@selector(changeColor:) to:_nonretained_target from:swatch forEvent:nil])
+        NSLog(@"Unable to find target for -changeColor: on color swatch tap.");
 }
 
 - (void)layoutSubviews;
@@ -309,12 +329,12 @@ static OUIColorSwatch *_newSwatch(OUIColorSwatchPicker *self, OQColor *color, CG
     // Detail navigation setup
     if (_showsSingleSwatch) {
         OUIColorSwatch *swatch = [_colorSwatches lastObject];
-        [swatch addTarget:nil action:@selector(showDetails:) forControlEvents:UIControlEventTouchDown];
+        [swatch addTarget:self action:@selector(_swatchTouchDown:) forControlEvents:UIControlEventTouchDown];
     } else if (_showsNavigationSwatch) {
         if (!_navigationButton)
             _navigationButton = [[OUIColorSwatch navigateToColorPickerButton] retain];
         _configureSwatchView(self, _navigationButton, &offset, swatchSize);
-        [_navigationButton addTarget:nil action:@selector(showDetails:) forControlEvents:UIControlEventTouchDown];
+        [_navigationButton addTarget:self action:@selector(_swatchTouchDown:) forControlEvents:UIControlEventTouchDown];
     }
 }
 

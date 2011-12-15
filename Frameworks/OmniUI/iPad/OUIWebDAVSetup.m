@@ -7,16 +7,15 @@
 
 #import "OUIWebDAVSetup.h"
 
+#import <MobileCoreServices/MobileCoreServices.h>
 #import <OmniFileStore/OFSFileInfo.h>
 #import <OmniFileStore/OFSFileManager.h>
 #import <OmniFoundation/OFPreference.h>
 #import <OmniFoundation/OFRegularExpression.h>
+#import <OmniFileStore/OFSDocumentStoreFileItem.h>
 #import <OmniUI/OUIAppController.h>
 #import <OmniUI/OUIBarButtonItem.h>
 #import <OmniUI/OUIDocumentPicker.h>
-#import <OmniUI/OUIDocumentProxy.h>
-
-#import <MobileCoreServices/MobileCoreServices.h>
 
 #import "OUICredentials.h"
 #import "OUIEditableLabeledValueCell.h"
@@ -111,6 +110,8 @@ NSString * const OUIOmniSyncUsername = @"OUIOmniSyncUsername";
 
 - (void)viewWillAppear:(BOOL)animated;
 {
+    [super viewWillAppear:animated];
+
     switch (_syncType) {
         case OUIWebDAVSync:
             [_nonretainedAddressField becomeFirstResponder];
@@ -128,6 +129,8 @@ NSString * const OUIOmniSyncUsername = @"OUIOmniSyncUsername";
 
 - (void)viewDidDisappear:(BOOL)animated;
 {
+    [super viewDidDisappear:animated];
+    
     [[NSNotificationCenter defaultCenter] removeObserver:self name:OUICertificateTrustUpdated object:nil];
 }
 
@@ -180,7 +183,7 @@ NSString * const OUIOmniSyncUsername = @"OUIOmniSyncUsername";
     sharedConnection.username = _nonretainedUsernameField.text;
     sharedConnection.password = _nonretainedPasswordField.text;
     
-    if ([sharedConnection validConnection]) {
+    if ([sharedConnection validateConnection] == OUIWebDAVConnectionValid) {
         UIViewController *viewController = nil;
         if (_isExporting) {
             viewController = [[OUIExportOptionsController alloc] initWithExportType:OUIExportOptionsExport];
@@ -395,6 +398,8 @@ const CGFloat OUIWebDAVSetupFooterHeight = 50;
 
 - (void)viewDidUnload;
 {
+    [super viewDidUnload];
+
     [[NSNotificationCenter defaultCenter] removeObserver:self name:OUICertificateTrustUpdated object:nil];
 }
 

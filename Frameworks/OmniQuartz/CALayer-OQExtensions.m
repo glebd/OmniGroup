@@ -513,6 +513,7 @@ static void _writeString(NSString *str)
     OBASSERT(CATransform3DIsAffine(GET_VALUE(transform)));
     OBASSERT(CATransform3DIsAffine(GET_VALUE(sublayerTransform)));
     
+    
     DEBUG_RENDER(@"  render %@ %@ anim:%d", self.name, [self shortDescription], useAnimatedValues);
     CGContextSaveGState(ctx);
     {
@@ -529,9 +530,42 @@ static void _writeString(NSString *str)
             CGContextClip(ctx);
             DEBUG_RENDER(@"  mask to bounds");
         }
-        CGColorRef backgroundColor = GET_VALUE(backgroundColor) ;
         
-        if (backgroundColor && !CGColorEqualToColor(backgroundColor, CGColorGetConstantColor(kCGColorClear))) {
+        CGColorRef backgroundColor = GET_VALUE(backgroundColor);
+        CGColorRef borderColor = GET_VALUE(borderColor);
+        if ([self isKindOfClass:[CAShapeLayer class]]) {
+#define SHAPE_LAYER_GET_VALUE(x) (((CAShapeLayer *)self).x)
+
+            OBASSERT(!useAnimatedValues);
+            OBASSERT(SHAPE_LAYER_GET_VALUE(cornerRadius) == 0.0);
+            OBASSERT([SHAPE_LAYER_GET_VALUE(lineCap) isEqualToString:kCALineCapButt]);
+            OBASSERT([SHAPE_LAYER_GET_VALUE(lineJoin) isEqualToString:kCALineJoinMiter]);
+            OBASSERT(SHAPE_LAYER_GET_VALUE(lineDashPhase) == 0.0);
+            OBASSERT(SHAPE_LAYER_GET_VALUE(lineDashPattern) == nil);
+            
+            CGColorRef fillColor = SHAPE_LAYER_GET_VALUE(fillColor);
+            CGColorRef strokeColor = SHAPE_LAYER_GET_VALUE(strokeColor);
+            CGFloat lineWidth = SHAPE_LAYER_GET_VALUE(lineWidth);
+            CGPathRef path = SHAPE_LAYER_GET_VALUE(path);
+            
+            if (path != NULL)
+                path = CGPathCreateCopy(path);
+            else 
+                path = CGPathCreateWithRect(localBounds, NULL);
+
+            if (fillColor != NULL) {
+                CGContextAddPath(ctx, path);
+                CGContextSetFillColorWithColor(ctx, fillColor);
+                CGContextFillPath(ctx);
+            }
+            if (strokeColor != NULL) {
+                CGContextAddPath(ctx, path);
+                CGContextSetStrokeColorWithColor(ctx, strokeColor);
+                CGContextSetLineWidth(ctx, lineWidth);
+                CGContextStrokePath(ctx);
+            }
+            CGPathRelease(path);
+        } else if ((self.borderWidth && borderColor) || backgroundColor) {
 #if DEBUG_RENDER_ON
             {
                 CGRect clip = CGContextGetClipBoundingBox(ctx);
@@ -548,13 +582,15 @@ static void _writeString(NSString *str)
             }
 #endif
             
-            CGContextSetFillColorWithColor(ctx, backgroundColor);
-
             if (self.cornerRadius != 0.0f) {
                 OQAppendRoundedRect(ctx, localBounds, self.cornerRadius);
-                CGContextFillPath(ctx);
             } else
-                CGContextFillRect(ctx, localBounds);
+                CGContextAddRect(ctx, localBounds);
+
+            if (backgroundColor && !CGColorEqualToColor(backgroundColor, CGColorGetConstantColor(kCGColorClear))) {
+                CGContextSetFillColorWithColor(ctx, backgroundColor);
+                CGContextFillPath(ctx);
+            }
         }
         
         // We require that the delegate implement the CGContextRef path, not just -displayLayer:.
@@ -580,6 +616,13 @@ static void _writeString(NSString *str)
             }
         }
         
+        if (self.borderWidth && borderColor && !CGColorEqualToColor(borderColor, CGColorGetConstantColor(kCGColorClear))) {
+            // the clipping & path was already set above while doing the background
+            CGContextSetLineWidth(ctx, self.borderWidth);
+            CGContextSetStrokeColorWithColor(ctx, borderColor);
+            CGContextStrokePath(ctx);
+        }
+
         NSArray *sublayers = self.sublayers;
         if ([sublayers count] > 0) {
             CATransform3D sublayerTransform = self.sublayerTransform;
@@ -715,6 +758,7 @@ static CGImageRef (*pCABackingStoreGetCGImage)(void *backingStore) = NULL;
 @end
 
 @implementation CAMediaTimingFunction (OQExtensions)
+
 + (id)functionCompatibleWithDefault;
 {
     // Determined empircally.
@@ -724,4 +768,31 @@ static CGImageRef (*pCABackingStoreGetCGImage)(void *backingStore) = NULL;
     return function;
     
 }
+
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
++ (CAMediaTimingFunction *)mediaTimingFunctionForUIViewAnimationCurve:(UIViewAnimationCurve)uiViewAnimationCurve;
+{
+    NSString *mediaTimingFunctionName = nil;
+    switch (uiViewAnimationCurve) {
+        case UIViewAnimationCurveEaseInOut:
+            mediaTimingFunctionName = kCAMediaTimingFunctionEaseInEaseOut;
+            break;
+        case UIViewAnimationCurveEaseIn:
+            mediaTimingFunctionName = kCAMediaTimingFunctionEaseIn;
+            break;
+        case UIViewAnimationCurveEaseOut:
+            mediaTimingFunctionName = kCAMediaTimingFunctionEaseOut;
+            break;
+        case UIViewAnimationCurveLinear:
+            mediaTimingFunctionName = kCAMediaTimingFunctionLinear;
+            break;
+        default:
+            OBASSERT_NOT_REACHED("Unknown curve");
+            mediaTimingFunctionName = kCAMediaTimingFunctionLinear;
+            break;
+    }
+    return [self functionWithName:mediaTimingFunctionName];
+}
+#endif
+
 @end

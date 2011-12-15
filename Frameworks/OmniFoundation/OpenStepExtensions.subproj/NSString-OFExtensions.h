@@ -56,6 +56,7 @@ Currently the only way to create strings with deferred bytes/characters is using
 + (NSString *)abbreviatedStringForBytes:(unsigned long long)bytes;
 + (NSString *)abbreviatedStringForHertz:(unsigned long long)hz;
 + (NSString *)humanReadableStringForTimeInterval:(NSTimeInterval)timeInterval;
++ (NSString *)approximateStringForTimeInterval:(NSTimeInterval)interval;
 + (NSString *)spacesOfLength:(NSUInteger)aLength;
 + (NSString *)stringWithStrings:(NSString *)first, ... NS_REQUIRES_NIL_TERMINATION;
 
@@ -71,6 +72,15 @@ Currently the only way to create strings with deferred bytes/characters is using
 - (NSString *)stringByRemovingCharactersInOFCharacterSet:(OFCharacterSet *)removeSet;
 - (NSString *)stringByRemovingReturns;
 - (NSString *)stringByRemovingRegularExpression:(OFRegularExpression *)regularExpression;
+
+enum {
+    OFStringNormlizationOptionLowercase = 0x01,
+    OFStringNormlizationOptionUppercase = 0x02,
+    OFStringNormilzationOptionStripCombiningMarks = 0x04,
+    OFStringNormilzationOptionStripPunctuation = 0x08
+};
+
+- (NSString *)stringByNormalizingWithOptions:(NSUInteger)options locale:(NSLocale *)locale;
 
 - (NSString *)stringByNormalizingPath;
     // Normalizes a path like /a/b/c/../../d to /a/d.

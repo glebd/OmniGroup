@@ -9,17 +9,14 @@
 
 #import <OmniFoundation/OFNull.h> // For OFISEQUAL()
 #import <OmniBase/OBObject.h>
+#import <OmniBase/macros.h>
 
 //#define DEBUG_KVO 1
 
 RCS_ID("$Id$");
 
-#ifdef OMNI_ASSERTIONS_ON
-OBDEPRECATED_METHODS(OFBindingSourceObject)
-- (NSString *)humanReadableDescriptionForKey:(NSString *)key; // Use the key path variant
-- (NSString *)shortHumanReadableDescriptionForKey:(NSString *)key;
-@end
-#endif
+OBDEPRECATED_METHOD(-humanReadableDescriptionForKey:); // Use the key path variant
+OBDEPRECATED_METHOD(-shortHumanReadableDescriptionForKey:);
 
 BOOL OFBindingPointsEqual(OFBindingPoint a, OFBindingPoint b)
 {

@@ -12,34 +12,48 @@
 #import <MobileCoreServices/UTType.h>
 #import <OmniFileStore/OFSFileInfo.h>
 #import <OmniFileStore/OFSFileManager.h>
+#import <OmniFoundation/OFUTI.h>
 #import <OmniFoundation/NSDictionary-OFExtensions.h>
 #import <OmniFoundation/NSFileManager-OFSimpleExtensions.h>
+#import <OmniFoundation/NSFileManager-OFSimpleExtensions.h>
 #import <OmniFoundation/NSInvocation-OFExtensions.h>
+#import <OmniFoundation/NSMutableArray-OFExtensions.h>
+#import <OmniFoundation/NSSet-OFExtensions.h>
 #import <OmniFoundation/OFBinding.h>
 #import <OmniFoundation/OFEnumNameTable.h>
-#import <OmniFoundation/OFFileWrapper.h>
 #import <OmniFoundation/OFPreference.h>
-#import <OmniUI/OUIAppController.h>
-#import <OmniUI/OUIDocumentPDFPreview.h>
-#import <OmniUI/OUIDocumentPickerScrollView.h>
-#import <OmniUI/OUIDocumentPickerDelegate.h>
-#import <OmniUI/OUIDocumentProxy.h>
-#import <OmniUI/OUIToolbarViewController.h>
-#import <OmniUI/OUIDocumentProxyView.h>
-#import <OmniFoundation/NSMutableArray-OFExtensions.h>
-#import <OmniFoundation/NSFileManager-OFSimpleExtensions.h>
+#import <OmniFileStore/OFSDocumentStore.h>
+#import <OmniFileStore/OFSDocumentStoreFileItem.h>
+#import <OmniFileStore/OFSDocumentStoreGroupItem.h>
 #import <OmniQuartz/CALayer-OQExtensions.h>
 #import <OmniQuartz/OQDrawing.h>
-#import <OmniUnzip/OUZipArchive.h>
+#import <OmniUI/OUIAnimationSequence.h>
+#import <OmniUI/OUIAppController.h>
+#import <OmniUI/OUIBarButtonItem.h>
+#import <OmniUI/OUIDocument.h>
+#import <OmniUI/OUIDocumentPickerDelegate.h>
+#import <OmniUI/OUIDocumentPickerScrollView.h>
+#import <OmniUI/OUIDocumentPreview.h>
+#import <OmniUI/OUIDocumentPickerFileItemView.h>
+#import <OmniUI/OUIDocumentPickerGroupItemView.h>
+#import <OmniUI/OUIDragGestureRecognizer.h>
 #import <OmniUI/OUISingleDocumentAppController.h>
-#import <sys/stat.h> // For S_IWUSR
+#import <OmniUI/OUIMainViewController.h>
+#import <OmniUI/UIGestureRecognizer-OUIExtensions.h>
+#import <OmniUI/UIView-OUIExtensions.h>
+#import <OmniUI/UITableView-OUIExtensions.h>
+#import <OmniUI/OUIActionSheet.h>
+#import <OmniUnzip/OUZipArchive.h>
 
+#import "OUIDocumentPicker-Internal.h"
+#import "OUIDocumentPickerDragSession.h"
 #import "OUIDocumentPickerView.h"
-#import "OUIDocumentProxy-Internal.h"
+#import "OUIDocumentRenameViewController.h"
 #import "OUIExportOptionsController.h"
 #import "OUIExportOptionsView.h"
 #import "OUISheetNavigationController.h"
 #import "OUISyncMenuController.h"
+#import "OUIToolbarTitleButton.h"
 
 RCS_ID("$Id$");
 
@@ -50,253 +64,125 @@ RCS_ID("$Id$");
     #define PICKER_DEBUG(format, ...)
 #endif
 
-static NSString * const ProxiesBinding = @"proxies";
+// OUIDocumentPickerDelegate
+OBDEPRECATED_METHOD(-documentPicker:didSelectProxy:);
+OBDEPRECATED_METHOD(-createNewDocumentAtURL:error:); // -createNewDocumentAtURL:completionHandler:
+OBDEPRECATED_METHOD(-documentPicker:scannedProxies:); // -documentStore:scannedFileItems:
+OBDEPRECATED_METHOD(-documentPicker:proxyClassForURL:); // -documentStore:fileItemClassForURL:
+OBDEPRECATED_METHOD(-documentPickerBaseNameForNewFiles:); // -documentStoreBaseNameForNewFiles:;
+OBDEPRECATED_METHOD(-documentPickerDocumentTypeForNewFiles:); // -documentStoreDocumentTypeForNewFiles:
+OBDEPRECATED_METHOD(-documentPicker:addExportActionsToSheet:invocations:invocations); // -documentPicker:addExportActions:
 
-@interface OUIDocumentPicker (/*Private*/) <UIActionSheetDelegate, MFMailComposeViewControllerDelegate, UITableViewDataSource, UITableViewDelegate>
-- (void)_loadProxies;
-- (void)_setupProxiesBinding;
-- (OUIDocumentProxy *)_makeProxyForURL:(NSURL *)fileURL;
-- (void)_documentProxyTapped:(OUIDocumentProxy *)proxy;
+OBDEPRECATED_METHOD(-documentPicker:availableExportTypesForProxy:); // proxy -> file item
+OBDEPRECATED_METHOD(-documentPicker:exportFileWrapperOfType:forProxy:withCompletionHandler:); // proxy -> file item
+OBDEPRECATED_METHOD(-documentPicker:PDFDataForProxy:error:); // proxy -> file item
+OBDEPRECATED_METHOD(-documentPicker:PNGDataForProxy:error:); // proxy -> file item
+OBDEPRECATED_METHOD(-documentPicker:cameraRollImageForProxy:); // proxy -> file item
+OBDEPRECATED_METHOD(-documentPicker:printProxy:fromButton:); // proxy -> file item
+OBDEPRECATED_METHOD(-documentPicker:printButtonTitleForProxy:); // proxy -> file item
+OBDEPRECATED_METHOD(-documentPicker:toolbarPromptForRenamingProxy:); // proxy -> file item
+
+OBDEPRECATED_METHOD(-availableDocumentInteractionExportTypesForFileItem:); // -availableExportTypesForFileItem:withSyncType:exportOptionType: 
+OBDEPRECATED_METHOD(-availableExportTypesForFileItem:); // -availableExportTypesForFileItem:withSyncType:exportOptionType: 
+
+static NSString * const kActionSheetExportIdentifier = @"com.omnigroup.OmniUI.OUIDocumentPicker.ExportAction";
+static NSString * const kActionSheetDeleteIdentifier = @"com.omnigroup.OmniUI.OUIDocumentPicker.DeleteAction";
+
+static NSString * const TopItemsBinding = @"topItems";
+static NSString * const OpenGroupItemsBinding = @"openGroupItems";
+
+@interface OUIDocumentPicker (/*Private*/) <MFMailComposeViewControllerDelegate, UITableViewDataSource, UITableViewDelegate, NSFilePresenter>
+
+- (void)_updateToolbarItems;
+- (void)_updateToolbarItemsEnabledness;
+- (void)_setupTopItemsBinding;
 - (void)_sendEmailWithSubject:(NSString *)subject messageBody:(NSString *)messageBody isHTML:(BOOL)isHTML attachmentName:(NSString *)attachmentFileName data:(NSData *)attachmentData fileType:(NSString *)fileType;
-- (void)_deleteWithoutConfirmation;
-- (CAMediaTimingFunction *)_caMediaTimingFunctionForUIViewAnimationCurve:(UIViewAnimationCurve)uiViewAnimationCurve;
-- (void)_animateWithKeyboard:(NSNotification *)notification showing:(BOOL)keyboardIsShowing;
-- (NSURL *)_renameProxy:(OUIDocumentProxy *)proxy toName:(NSString *)name type:(NSString *)documentUTI rescanDocuments:(BOOL)rescanDocuments;
-- (void)_updateFieldsForSelectedProxy;
-+ (OFPreference *)_sortPreference;
-- (void)_updateSort;
+- (void)_deleteWithoutConfirmation:(NSSet *)fileItemsToDelete;
+- (void)_updateFieldsForSelectedFileItem;
+- (void)exportDocument:(id)sender;
+- (void)emailDocumentChoice:(id)sender;
 - (void)sendToApp:(id)sender;
-- (BOOL)_canUseOpenInWithProxy:(OUIDocumentProxy *)proxy;
-- (void)_applicationDidEnterBackground;
+- (void)printDocument:(id)sender;
+- (void)copyAsImage:(id)sender;
+- (void)sendToCameraRoll:(id)sender;
+- (void)moveToCloud:(id)sender;
+- (void)moveOutOfCloud:(id)sender;
+- (BOOL)_canUseOpenInWithExportType:(NSString *)exportType;
+- (BOOL)_canUseOpenInWithFileItem:(OFSDocumentStoreFileItem *)fileItem;
+- (void)_applicationWillEnterForeground:(NSNotification *)note;
+- (void)_applicationDidEnterBackground:(NSNotification *)note;
+- (void)_startRenamingFileItem:(OFSDocumentStoreFileItem *)fileItem;
+- (void)_startDragRecognizer:(OUIDragGestureRecognizer *)recognizer;
+- (void)_openGroup:(OFSDocumentStoreGroupItem *)groupItem andEditTitle:(BOOL)editTitle;
+- (void)_revealAndActivateNewDocumentFileItem:(OFSDocumentStoreFileItem *)createdFileItem completionHandler:(void (^)(void))completionHandler;
 
-@property (nonatomic, retain) NSMutableDictionary *openInMapCache;
+- (void)_beginIgnoringDocumentsDirectoryUpdates;
+- (void)_endIgnoringDocumentsDirectoryUpdates;
+@property(nonatomic,copy) NSSet *topItems;
+@property(nonatomic,copy) NSSet *openGroupItems;
+- (void)_propagateItems:(NSSet *)items toScrollView:(OUIDocumentPickerScrollView *)scrollView;
+
+@property(nonatomic,retain) NSMutableDictionary *openInMapCache;
 
 @end
 
 @implementation OUIDocumentPicker
-
-static NSString * const PositionAdjustAnimation = @"positionAdjust";
-
-static void _pushAndFadeAnimation(UIView *view, CGPoint direction, BOOL fade)
 {
-    if (!view)
-        return; // _favoriteButton
+    id <OUIDocumentPickerDelegate> _nonretained_delegate;
+
+    NSOperationQueue *_filePresenterQueue;
     
-    if ([view.layer animationForKey:PositionAdjustAnimation])
-        return;
+    OUIDocumentPickerScrollView *_topScrollView;
+    OUIDocumentPickerScrollView *_groupScrollView;
     
-    const CGFloat kFadeDistance = 64;
+    UIPopoverController *_filterPopoverController;
+    OUIDocumentRenameViewController *_renameViewController;
+    BOOL _isRevealingNewDocument;
     
-    CGSize offset = CGSizeMake(direction.x * kFadeDistance, direction.y * kFadeDistance);
+    OUIReplaceDocumentAlert *_replaceDocumentAlert;
     
-    // Push the title and date down off screen (and fade them out?)
-    CABasicAnimation *positionAnimation = [CABasicAnimation animationWithKeyPath:@"position"];
-    CGPoint position = view.layer.position;
-    CGPoint fadePosition = CGPointMake(position.x + offset.width, position.y + offset.height);
-    positionAnimation.fromValue = [NSValue valueWithCGPoint:fade ? position : fadePosition];
-    positionAnimation.toValue = [NSValue valueWithCGPoint:fade ? fadePosition : position];
+    BOOL _loadingFromNib;
     
-    CABasicAnimation *opacityAnimation = [CABasicAnimation animationWithKeyPath:@"opacity"];
-    opacityAnimation.fromValue = [NSNumber numberWithFloat:fade ? 1 : 0];
-    opacityAnimation.toValue = [NSNumber numberWithFloat:fade ? 0 : 1];
+    // Used to map between an exportType (UTI string) and BOOL indicating if an app exists that we can send it to via Document Interaction.
+    NSMutableDictionary *_openInMapCache;
     
-    CAAnimationGroup *group = [CAAnimationGroup animation];
-    group.fillMode = kCAFillModeForwards;
-    group.removedOnCompletion = !fade;
-    group.animations = [NSArray arrayWithObjects:positionAnimation, opacityAnimation, nil];
+    CGSize _filterViewContentSize;
+
+    UIToolbar *_toolbar;
     
-    [view.layer addAnimation:group forKey:PositionAdjustAnimation];
+    UIBarButtonItem *_duplicateDocumentBarButtonItem;
+    UIBarButtonItem *_exportBarButtonItem;
+    UIBarButtonItem *_deleteBarButtonItem;
+    UIBarButtonItem *_appTitleToolbarItem;
+    UIButton *_appTitleToolbarButton;
+
+    OFSDocumentStore *_documentStore;
+    NSUInteger _ignoreDocumentsDirectoryUpdates;
+    
+    OFSetBinding *_topItemsBinding;
+    NSSet *_topItems;
+    OFSetBinding *_openGroupItemsBinding;
+    NSSet *_openGroupItems;
+    
+    OUIDragGestureRecognizer *_startDragRecognizer;
+    OUIDocumentPickerDragSession *_dragSession;
 }
 
-typedef enum {
-    AnimateNeighborProxies,  
-    AnimateTitleAndButtons,
-} AnimationType;
-
-static void _addPushAndFadeAnimations(OUIDocumentPicker *self, BOOL fade, AnimationType type)
-{
-    if (type == AnimateTitleAndButtons) {
-        CGPoint down = CGPointMake(0, 1);
-        _pushAndFadeAnimation(self->_titleLabel, down, fade);
-        _pushAndFadeAnimation(self->_dateLabel, down, fade);
-        _pushAndFadeAnimation(self->_favoriteButton, down, fade);
-        _pushAndFadeAnimation(self->_exportButton, down, fade);
-        _pushAndFadeAnimation(self->_addDocumentButton, down, fade);
-        _pushAndFadeAnimation(self->_deleteButton, down, fade);
-    } else if (type == AnimateNeighborProxies) {
-        OUIDocumentProxy *proxy = self->_previewScrollView.proxyClosestToCenter;
-        if (proxy) { // New document?
-            OUIDocumentProxy *neighbor;
-            
-            if ((neighbor = [self->_previewScrollView proxyToLeftOfProxy:proxy])) {
-                CGPoint left = CGPointMake(-1, 0);
-                _pushAndFadeAnimation(neighbor.view, left, fade);
-            }
-            if ((neighbor = [self->_previewScrollView proxyToRightOfProxy:proxy])) {
-                CGPoint right = CGPointMake(1, 0);
-                _pushAndFadeAnimation(neighbor.view, right, fade);
-            }
-        }
-    } else {
-        OBASSERT_NOT_REACHED("Bad type");
-    }
-}
-
-+ (NSString *)userDocumentsDirectory;
-{
-    static NSString *documentDirectory = nil; // Avoid trying the creation on each call.
-    
-    if (!documentDirectory) {
-        documentDirectory = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES/*expandTilde*/) lastObject] copy];
-        OBASSERT(documentDirectory);
-
-        if (![[NSFileManager defaultManager] directoryExistsAtPath:documentDirectory]) {
-            NSError *error = nil;
-            if (![[NSFileManager defaultManager] createDirectoryAtPath:documentDirectory withIntermediateDirectories:YES attributes:nil error:&error]) {
-                NSLog(@"Error creating %@: %@", documentDirectory, [error toPropertyList]);
-            }
-        }
-    }
-        
-    return documentDirectory;
-}
-
-+ (NSString *)sampleDocumentsDirectory;
-{
-    NSString *samples = [[NSBundle mainBundle] pathForResource:@"Samples" ofType:@""];
-    OBASSERT(samples);
-    return samples;
-}
-
-+ (void)copySampleDocumentsToUserDocuments;
-{
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSString *sampleDocumentsDirectory = [[self class] sampleDocumentsDirectory];
-    NSString *userDocumentsDirectory = [[self class] userDocumentsDirectory];
-    
-#if __IPHONE_4_0 <= __IPHONE_OS_VERSION_MAX_ALLOWED
-    NSError *error = nil;
-    NSArray *fileNames = [fileManager contentsOfDirectoryAtPath:sampleDocumentsDirectory error:&error];
-    if (!fileNames) {
-        NSLog(@"Unable to find sample documents at %@: %@", sampleDocumentsDirectory, [error toPropertyList]);
-        return;
-    }
-#else
-    NSArray *fileNames = [fileManager directoryContentsAtPath:sampleDocumentsDirectory];
-#endif    
-    
-    for (NSString *fileName in fileNames) {
-        NSString *samplePath = [sampleDocumentsDirectory stringByAppendingPathComponent:fileName];
-        NSString *documentPath = [userDocumentsDirectory stringByAppendingPathComponent:fileName];
-        NSString *documentName = [[documentPath lastPathComponent] stringByDeletingPathExtension];
-        
-        NSString *localizedTitle = [self localizedNameForSampleDocumentNamed:documentName];
-        if (localizedTitle && ![localizedTitle isEqualToString:documentName]) {
-            NSString *extension = [documentPath pathExtension];
-            documentPath = [userDocumentsDirectory stringByAppendingPathComponent:localizedTitle];
-            documentPath = [documentPath stringByAppendingPathExtension:extension];
-        }
-        
-        NSError *error = nil;
-        if (![[NSFileManager defaultManager] copyItemAtPath:samplePath toPath:documentPath error:&error]) {
-            NSLog(@"Unable to copy %@ to %@: %@", samplePath, documentPath, [error toPropertyList]);
-        } else if ([[fileName stringByDeletingPathExtension] isEqualToString:@"Welcome"]) {
-            [fileManager touchFile:documentPath];
-        }
-    }
-}
- 
-+ (NSString *)localizedNameForSampleDocumentNamed:(NSString *)documentName;
-{
-    return [[NSBundle mainBundle] localizedStringForKey:documentName value:nil table:@"SampleNames"];
-}
-
-+ (NSString *)pathToSampleDocumentNamed:(NSString *)name ofType:(NSString *)fileType;
-{
-    CFStringRef extension = UTTypeCopyPreferredTagWithClass((CFStringRef)fileType, kUTTagClassFilenameExtension);
-    if (!extension)
-        OBRequestConcreteImplementation(self, _cmd); // UTI not registered in the Info.plist?
-    
-    NSString *path = [[self sampleDocumentsDirectory] stringByAppendingPathComponent:[name stringByAppendingPathExtension:(NSString *)extension]];
-    CFRelease(extension);
-    
-    return path;
-}
-
-static NSString *_availablePath(NSString *directory, NSString *baseName, NSString *extension, NSUInteger *ioCounter)
-{
-    NSUInteger counter = *ioCounter; // starting counter
-    
-    NSString *result = nil;
-    while (!result) {
-        NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-        
-        NSString *fileName = [[NSString alloc] initWithFormat:@"%@.%@", baseName, extension];
-        NSString *path = [directory stringByAppendingPathComponent:fileName];
-        [fileName release];
-        
-        if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
-            result = [path copy];
-        } else {
-            if (counter == 0)
-                counter = 2; // First duplicate should be "Foo 2".
-            
-            fileName = [[NSString alloc] initWithFormat:@"%@ %d.%@", baseName, counter, extension];
-            counter++;
-            
-            NSString *path = [directory stringByAppendingPathComponent:fileName];
-            [fileName release];
-            
-            if (![[NSFileManager defaultManager] fileExistsAtPath:path])
-                result = [path copy];
-        }
-        
-        [pool release];
-    }
-    
-    *ioCounter = counter; // report how many we used
-    return [result autorelease];
-}
-
-+ (NSString *)availablePathInDirectory:(NSString *)dir baseName:(NSString *)baseName extension:(NSString *)extension counter:(NSUInteger *)ioCounter;
-{
-    return _availablePath(dir, baseName, extension, ioCounter);
-}
-
-- (OUIDocumentProxy *)proxyByInstantiatingSampleDocumentNamed:(NSString *)name ofType:(NSString *)fileType;
-{
-    CFStringRef extension = UTTypeCopyPreferredTagWithClass((CFStringRef)fileType, kUTTagClassFilenameExtension);
-    if (!extension)
-        OBRequestConcreteImplementation(self, _cmd); // UTI not registered in the Info.plist?
-
-    NSUInteger counter = 0;
-    
-    NSString *samplePath = [[self class] pathToSampleDocumentNamed:name ofType:fileType];
-    NSString *documentPath = _availablePath([[self class] userDocumentsDirectory], name, (NSString *)extension, &counter);
-    CFRelease(extension);
-
-    NSError *error = nil;
-    if (![[NSFileManager defaultManager] copyItemAtPath:samplePath toPath:documentPath error:&error]) {
-        NSLog(@"Unable to copy %@ to %@: %@", samplePath, documentPath, [error toPropertyList]);
-        return nil;
-    }
-    
-    // This is the reason we return a proxy; we need to rescan and don't want to let the caller forget.
-    [self rescanDocuments];
-
-    // Hack. We expect the caller to want to immediately open this proxy, but until layout, the proxy's view isn't in our scroll view. And that causes the open animation to fail.
-    [self view];
-    [_previewScrollView layoutSubviews];
-    
-    OUIDocumentProxy *proxy = [self proxyWithURL:[NSURL fileURLWithPath:documentPath]];
-    OBASSERT(proxy);
-    return proxy;
-}
-          
 static id _commonInit(OUIDocumentPicker *self)
 {
-    self.directory = [[self class] userDocumentsDirectory]; // accessor does the scan
+    // Methods removed on this class that subclasses shouldn't be overriding any more
+    OBASSERT_NOT_IMPLEMENTED(self, documentActionTitle); // The new document button is just a "+" now and we don't have the new-or-duplicate button on the doc picker
+    OBASSERT_NOT_IMPLEMENTED(self, duplicateActionTitle);
+    OBASSERT_NOT_IMPLEMENTED(self, deleteDocumentTitle); // -deleteDocumentTitle:, taking a count
     
+    OBASSERT_NOT_IMPLEMENTED(self, editNameForDocumentURL:); // Instance method on OFSDocumentStoreItem
+    OBASSERT_NOT_IMPLEMENTED(self, displayNameForDocumentURL:); // Instance method on OFSDocumentStoreItem
+
+    self->_filePresenterQueue = [[NSOperationQueue alloc] init];
+    self->_filePresenterQueue.name = @"OUIDocumentPicker NSFilePresenter notifications";
+    self->_filePresenterQueue.maxConcurrentOperationCount = 1;
+    
+    self.filterViewContentSize = CGSizeMake(320, 110);
     return self;
 }
 
@@ -317,32 +203,39 @@ static id _commonInit(OUIDocumentPicker *self)
     return _commonInit(self);
 }
 
-- (void)awakeFromNib;
-{
-    [super awakeFromNib];
-    
-    _loadingFromNib = NO;
-    [self _loadProxies];
-}
-
 - (void)dealloc;
 {
-    [_openInMapCache release];
-    [_previewScrollView release];
-    [_titleLabel release];
-    [_dateLabel release];
-    [_buttonGroupView release];
-    [_favoriteButton release];
-    [_exportButton release];
-    [_addDocumentButton release];
-    [_deleteButton release];
+    [[NSNotificationCenter defaultCenter] removeObserver:self]; // metadata queries
+
+    [_duplicateDocumentBarButtonItem release];
+    [_exportBarButtonItem release];
+    [_deleteBarButtonItem release];
+    [_appTitleToolbarItem release];
+    [_appTitleToolbarButton release];
     
-    [_proxiesBinding invalidate];
-    [_proxiesBinding release];
-    [_directory release];
-    [_proxies release];
-    [_proxyTappedTarget release];
-    [_actionSheetInvocations release];
+    OBASSERT(_dragSession == nil); // it retains us anyway, so we can't get here otherwise
+    _startDragRecognizer.delegate = nil;
+    [_startDragRecognizer release];
+    _startDragRecognizer = nil;
+
+    [_openInMapCache release];
+    [_topScrollView release];
+    [_groupScrollView release];
+    
+    [_topItemsBinding invalidate];
+    [_topItemsBinding release];
+    [_topItems release];
+    
+    [_openGroupItemsBinding invalidate];
+    [_openGroupItemsBinding release];
+    [_openGroupItems release];
+    
+    if (_documentStore)
+        [NSFileCoordinator removeFilePresenter:self];
+    [_documentStore release];
+    [_filePresenterQueue release];
+    
+    [_toolbar release];
     
     [super dealloc];
 }
@@ -350,333 +243,163 @@ static id _commonInit(OUIDocumentPicker *self)
 #pragma mark -
 #pragma mark KVC
 
+@synthesize documentStore = _documentStore;
+- (void)setDocumentStore:(OFSDocumentStore *)documentStore;
+{
+    OBPRECONDITION(![self isViewLoaded]); // Otherwise we'd need to fix the binding
+    
+    if (_documentStore == documentStore)
+        return;
+
+    if (_documentStore)
+        [NSFileCoordinator removeFilePresenter:self];
+    
+    [_documentStore release];
+    _documentStore = [documentStore retain];
+    
+    if (_documentStore)
+        [NSFileCoordinator addFilePresenter:self];
+    
+    // Checks whether the document store has a file type for newly created documents
+    [self _updateToolbarItems];
+}
+
 @synthesize delegate = _nonretained_delegate;
-- (void)setDelegate:(id <OUIDocumentPickerDelegate>)delegate;
-{
-    if (_nonretained_delegate == delegate)
-        return;
-    _nonretained_delegate = delegate;
 
-    [self _loadProxies];
+@synthesize toolbar = _toolbar;
+@synthesize mainScrollView = _mainScrollView;
+@synthesize groupScrollView = _groupScrollView;
+
+- (OUIDocumentPickerScrollView *)activeScrollView;
+{
+    if ([_groupScrollView window])
+        return _groupScrollView;
+    return _mainScrollView;
 }
 
-
-@synthesize previewScrollView = _previewScrollView;
-@synthesize titleLabel = _titleLabel;
-@synthesize dateLabel = _dateLabel;
-@synthesize favoriteButton = _favoriteButton;
-@synthesize exportButton = _exportButton;
-@synthesize addDocumentButton = _addDocumentButton;
-@synthesize deleteButton = _deleteButton;
-@synthesize buttonGroupView = _buttonGroupView;
-
-@synthesize directory = _directory;
 @synthesize openInMapCache = _openInMapCache;
-
-- (void)setDirectory:(NSString *)directory;
-{
-    if (OFISEQUAL(directory, _directory))
-        return;
-    [_directory release];
-    _directory = [directory copy];
-    
-    [self _loadProxies];
-    
-}
-
-@synthesize proxyTappedTarget = _proxyTappedTarget;
-@synthesize proxyTappedAction = _proxyTappedAction;
 
 #pragma mark -
 #pragma mark API
 
 - (void)rescanDocumentsScrollingToURL:(NSURL *)targetURL;
 {
-    [self rescanDocumentsScrollingToURL:targetURL animated:(_previewScrollView.window != nil)];
+    [self rescanDocumentsScrollingToURL:targetURL animated:(_mainScrollView.window != nil)];
 }
 
 - (void)rescanDocumentsScrollingToURL:(NSURL *)targetURL animated:(BOOL)animated;
 {
     [[targetURL retain] autorelease];
     
-    // This depends on the caller to have *also* poked the proxies into reloading any metadata that will be used to sort or filter them. That is, we don't reload all that info right now.
-    [self _loadProxies];
-
-    // We need our view if we are to do the scrolling <bug://bugs/60388> (OGS isn't restoring the the last selected document on launch)
-    [self view];
+    OBFinishPortingLater("Allow the caller to pass in a completion handler for its following work (and so it can block/unblock interactions?");
     
-    // <bug://bugs/60005> (Document picker scrolls to empty spot after editing file)
-    [_previewScrollView.window layoutIfNeeded];
-    
-    OUIDocumentProxy *proxy = [self proxyWithURL:targetURL];
-    if (!proxy)
-        proxy = _previewScrollView.firstProxy;
-    
-    [_previewScrollView setNeedsLayout];
-    [self setSelectedProxy:proxy scrolling:YES animated:animated];
+    // This depends on the caller to have *also* poked the file items into reloading any metadata that will be used to sort or filter them. That is, we don't reload all that info right now.
+    [_documentStore scanItemsWithCompletionHandler:^{
+        // We need our view if we are to do the scrolling <bug://bugs/60388> (OGS isn't restoring the the last selected document on launch)
+        [self view];
+        
+        // <bug://bugs/60005> (Document picker scrolls to empty spot after editing file)
+        [_mainScrollView.window layoutIfNeeded];
+        
+        OBFinishPortingLater("Show/open the group scroll view if the item is in a group?");
+        OFSDocumentStoreFileItem *fileItem = [_documentStore fileItemWithURL:targetURL];
+        if (!fileItem)
+            [_mainScrollView scrollsToTop]; // OBFinishPorting -- this is a getter
+        else
+            [_mainScrollView scrollItemToVisible:fileItem animated:animated];
+        
+        // TODO: Needed?
+        [_mainScrollView setNeedsLayout];
+    }];
 }
 
 - (void)rescanDocuments;
 {
-    [self rescanDocumentsScrollingToURL:_previewScrollView.proxyClosestToCenter.url];
+    [self rescanDocumentsScrollingToURL:nil];
 }
 
-- (void)revealAndActivateNewDocumentAtURL:(NSURL *)newDocumentURL;
+- (NSSet *)selectedFileItems;
 {
-    [self _loadProxies];
-    OUIDocumentProxy *createdProxy = [self proxyWithURL:newDocumentURL];
-    OBASSERT(createdProxy);
+    return [_documentStore.fileItems select:^(id obj){
+        OFSDocumentStoreFileItem *fileItem = obj;
+        return fileItem.selected;
+    }];
+}
+
+- (NSUInteger)selectedFileItemCount;
+{
+    NSUInteger selectedCount = 0;
     
-    // At first it should not take up space.
-    createdProxy.layoutShouldAdvance = NO;
-    [_previewScrollView layoutSubviews];
-    [self setSelectedProxy:createdProxy scrolling:YES animated:NO];
-
-    OBASSERT(createdProxy.view != nil); // should have had a view assigned.
-    createdProxy.view.alpha = 0; // start out transparent
-
-    // Turn on layout advancing for this proxy and do an animated layout, sliding to make room for it.
-    createdProxy.layoutShouldAdvance = YES;
-
-    [UIView beginAnimations:@"slide old documents to make room for new document" context:createdProxy];
-    [UIView setAnimationDuration:0.3];
-    [UIView setAnimationDelegate:self];
-    [UIView setAnimationCurve:UIViewAnimationCurveEaseIn];
-    [UIView setAnimationDidStopSelector:@selector(_revealNewDocumentAnimationDidStop:finished:context:)];
-    {
-        [_previewScrollView layoutSubviews];
-    }
-    [UIView commitAnimations];
-}
-
-- (void)_revealNewDocumentAnimationReallyDidStop:(NSString *)animationID finished:(NSNumber *)finished context:(void *)context;
-{
-    [_previewScrollView setNeedsLayout];
-    [_previewScrollView layoutIfNeeded];
-
-    OUIDocumentProxy *proxy = context;
-   // Not -_documentProxyTapped: since that starts a scroll to the proxy if it isn't the one currently in the middle, but we might still be animating to the new docuemnt
-    [_proxyTappedTarget performSelector:_proxyTappedAction withObject:proxy];
-    _isRevealingNewDocument = NO;
-}
-
-- (void)_revealNewDocumentAnimationDidStop:(NSString *)animationID finished:(NSNumber *)finished context:(void *)context;
-{
-    OUIDocumentProxy *proxy = context;
+    for (OFSDocumentStoreFileItem *fileItem in _documentStore.fileItems)
+        if (fileItem.selected)
+            selectedCount++;
     
-    [UIView beginAnimations:@"fade in new document" context:context];
-    [UIView setAnimationDelegate:self];
-    [UIView setAnimationDidStopSelector:@selector(_revealNewDocumentAnimationReallyDidStop:finished:context:)];
-    [UIView setAnimationDuration:0.3];
-    {
-        proxy.view.alpha = 1;
+    return selectedCount;
+}
+
+- (void)clearSelection:(BOOL)shouldEndEditing;
+{
+    for (OFSDocumentStoreFileItem *fileItem in _documentStore.fileItems)
+        fileItem.selected = NO;
+    
+    if (shouldEndEditing) {
+        [self setEditing:NO animated:YES];
+        return;
     }
-    [UIView commitAnimations];
+    
+    [self _updateToolbarItemsEnabledness];
 }
 
-- (BOOL)hasDocuments;
+- (OFSDocumentStoreFileItem *)singleSelectedFileItem;
 {
-    return [_proxies count] != 0;
-}
-
-- (OUIDocumentProxy *)selectedProxy;
-{
-    if (_selectedProxy != nil && ![_proxies containsObject:_selectedProxy]) {
-        OUIDocumentProxy *updatedProxy = [self proxyWithURL:_selectedProxy.url];
-        [_selectedProxy release];
-        _selectedProxy = [updatedProxy retain];
-    }
-
-    return _selectedProxy;
-}
-
-- (void)setSelectedProxy:(OUIDocumentProxy *)proxy;
-{
-    [self setSelectedProxy:proxy scrolling:YES animated:YES];
-}
-
-- (void)setSelectedProxy:(OUIDocumentProxy *)proxy scrolling:(BOOL)shouldScroll animated:(BOOL)animated;
-{
-    if (_selectedProxy != proxy) {
-        [_selectedProxy release];
-        _selectedProxy = [proxy retain];
-    }
-
-    if (_trackPickerView && shouldScroll)
-        [_previewScrollView snapToProxy:proxy animated:animated];
-
-    [self _updateFieldsForSelectedProxy];
-
-    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:didSelectProxy:)])
-        [_nonretained_delegate documentPicker:self didSelectProxy:self.selectedProxy];
-}
-
-- (OUIDocumentProxyView *)viewForSelectedProxy;
-{
-    OUIDocumentProxy *proxy = self.selectedProxy;
-    if (proxy == nil)
+    NSSet *selectedFileItems = self.selectedFileItems;
+    
+    // Ensure we have one and only one selected file item.
+    if ([selectedFileItems count] != 1){
+        OBASSERT_NOT_REACHED("We should only have one file item in selectedFileItems at this point.");
         return nil;
-
-    if (!_trackPickerView)
-        [_previewScrollView snapToProxy:proxy animated:NO];
-    OUIDocumentProxyView *view = proxy.view;
-
-    OBPOSTCONDITION(view != nil);
-    return view;
-}
-
-- (OUIDocumentProxy *)proxyWithURL:(NSURL *)url;
-{
-    if (url == nil || ![url isFileURL])
-        return nil;
-
-    NSString *standardizedPathForURL = [[url path] stringByStandardizingPath];
-    OBASSERT(standardizedPathForURL != nil);
-    for (OUIDocumentProxy *proxy in _proxies) {
-        NSString *proxyPath = [[[proxy url] path] stringByStandardizingPath];
-        OBASSERT(proxyPath != nil);
-        
-        PICKER_DEBUG(@"- Checking proxy: '%@'", proxyPath);
-        if ([proxyPath compare:standardizedPathForURL] == NSOrderedSame)
-            return proxy;
     }
-    PICKER_DEBUG(@"Couldn't find proxy for path: '%@'", standardizedPathForURL);
-    PICKER_DEBUG(@"Unicode: '%s'", [standardizedPathForURL cStringUsingEncoding:NSNonLossyASCIIStringEncoding]);
-    return nil;
+    
+    return [selectedFileItems anyObject];
 }
 
-- (OUIDocumentProxy *)proxyNamed:(NSString *)name;
+- (BOOL)canEditFileItem:(OFSDocumentStoreFileItem *)fileItem;
 {
-    for (OUIDocumentProxy *proxy in _proxies)
-        if ([proxy.name isEqual:name])
-            return proxy;
-    return nil;
-}
-
-- (BOOL)canEditProxy:(OUIDocumentProxy *)proxy;
-{
+    OBFinishPortingLater("Needs to allow deleting iCloud stuff, which isn't in the user documents directory");
+    return YES;
+#if 0
     NSString *documentsPath = [[[self class] userDocumentsDirectory] stringByExpandingTildeInPath];
     if (![documentsPath hasSuffix:@"/"])
         documentsPath = [documentsPath stringByAppendingString:@"/"];
     
-    NSString *proxyPath = [[[proxy.url absoluteURL] path] stringByExpandingTildeInPath];
-    return [proxyPath hasPrefix:documentsPath];
+    NSString *filePath = [[[fileItem.url absoluteURL] path] stringByExpandingTildeInPath];
+    return [filePath hasPrefix:documentsPath];
+#endif
 }
 
-- (BOOL)deleteDocumentWithoutPrompt:(OUIDocumentProxy *)proxy error:(NSError **)outError;
+- (void)scrollToTopAnimated:(BOOL)animated;
 {
-    if (proxy == nil)
-        return YES;
-    return [[NSFileManager defaultManager] removeItemAtPath:[proxy.url path] error:outError];
-}
-
-- (NSURL *)renameProxy:(OUIDocumentProxy *)proxy toName:(NSString *)name type:(NSString *)documentUTI;
-{
-    return [self _renameProxy:proxy toName:name type:documentUTI rescanDocuments:YES];
-}
-
-- (NSString *)documentTypeForNewFiles;
-{
-    if ([_nonretained_delegate respondsToSelector:@selector(documentPickerDocumentTypeForNewFiles:)])
-        return [_nonretained_delegate documentPickerDocumentTypeForNewFiles:self];
+    OUIDocumentPickerScrollView *scrollView = self.activeScrollView;
     
-    NSArray *editableTypes = [[OUIAppController controller] editableFileTypes];
-    OBASSERT([editableTypes count] < 2); // If there is more than one, we might pick the wrong one.
-    
-    return [editableTypes lastObject];
+    UIEdgeInsets insets = scrollView.contentInset;
+    [scrollView setContentOffset:CGPointMake(-insets.left, -insets.top) animated:animated];
 }
 
-- (NSURL *)urlForNewDocumentOfType:(NSString *)documentUTI;
+- (void)scrollItemToVisible:(OFSDocumentStoreItem *)item animated:(BOOL)animated;
 {
-    NSString *baseName = [_nonretained_delegate documentPickerBaseNameForNewFiles:self];
-    if (!baseName) {
-        OBASSERT_NOT_REACHED("No delegate? You probably want one to provide a better base untitled document name.");
-        baseName = @"My Document";
-    }
-    return [self urlForNewDocumentWithName:baseName ofType:documentUTI];
-}
+    OUIDocumentPickerScrollView *scrollView = self.activeScrollView;
 
-- (NSURL *)urlForNewDocumentWithName:(NSString *)name ofType:(NSString *)documentUTI;
-{
-    OBPRECONDITION(documentUTI);
-
-    CFStringRef extension = UTTypeCopyPreferredTagWithClass((CFStringRef)documentUTI, kUTTagClassFilenameExtension);
-    if (!extension)
-        OBRequestConcreteImplementation(self, _cmd); // UTI not registered in the Info.plist?
-
-    static NSString * const UntitledDocumentCreationCounterKey = @"OUIUntitledDocumentCreationCounter";
-
-    NSString *directory = [[self class] userDocumentsDirectory];
-    NSUInteger counter = [[NSUserDefaults standardUserDefaults] integerForKey:UntitledDocumentCreationCounterKey];
-
-    NSString *path = _availablePath(directory, name, (NSString *)extension, &counter);
-    CFRelease(extension);
-    
-    [[NSUserDefaults standardUserDefaults] setInteger:counter forKey:UntitledDocumentCreationCounterKey];
-    return [NSURL fileURLWithPath:path];
-}
-
-- (void)scrollToProxy:(OUIDocumentProxy *)proxy animated:(BOOL)animated;
-{
-    [self setSelectedProxy:proxy scrolling:YES animated:animated];
-}
-
-- (IBAction)favorite:(id)sender;
-{
-    NSLog(@"%s", __PRETTY_FUNCTION__);
-}
-
-- (NSString *)documentActionTitle;
-{
-    return NSLocalizedStringFromTableInBundle(@"New Document", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view");
-}
-
-- (NSString *)duplicateActionTitle;
-{
-    return NSLocalizedStringFromTableInBundle(@"Duplicate Document", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view");    
+    [scrollView scrollItemToVisible:item animated:animated];
 }
 
 - (BOOL)okayToOpenMenu;
 {
-    return (!_isRevealingNewDocument && _isInnerController);  // will still be the inner controller while scrolling to the new doc
-}
-
-- (IBAction)newDocumentMenu:(id)sender;
-{
-    if (![self okayToOpenMenu])
-        return;
-    
-    OUIDocumentProxy *proxy = _previewScrollView.proxyClosestToCenter;
-    NSURL *url = proxy.url;
-    if (url == nil) {
-        // No document is selected, so we can't duplicate one, so don't bother presenting a menu with a single choice
-        [self newDocument:sender];
-        return;
-    }
-
-    UIActionSheet *actionSheet = [[[UIActionSheet alloc] initWithTitle:nil delegate:self cancelButtonTitle:nil destructiveButtonTitle:nil otherButtonTitles:nil] autorelease];
-    [_actionSheetInvocations release];
-    _actionSheetInvocations = [[NSMutableArray alloc] init];
-
-    if (self.documentTypeForNewFiles != nil) {
-        [actionSheet addButtonWithTitle:[self documentActionTitle]];
-        [_actionSheetInvocations addObject:[NSInvocation invocationWithTarget:self action:@selector(newDocument:)]];
-    }
-
-    [actionSheet addButtonWithTitle:[self duplicateActionTitle]];
-    [_actionSheetInvocations addObject:[NSInvocation invocationWithTarget:self action:@selector(duplicateDocument:)]];
-
-    [actionSheet showFromRect:[sender frame] inView:[sender superview] animated:YES];
-    
-    _nonretainedActionSheet = actionSheet;
+    return (!_isRevealingNewDocument && self.parentViewController != nil);  // will still be the inner controller while scrolling to the new doc
 }
 
 - (IBAction)newDocument:(id)sender;
 {
-    if (_titleEditingField && !_titleEditingField.hidden) {
-        [_titleEditingField resignFirstResponder];
-        return;
-    }
+    OBPRECONDITION(_renameViewController == nil); // Can't be renaming right now, so need to try to stop
 
     if (![self okayToOpenMenu])
         return;
@@ -684,127 +407,142 @@ static id _commonInit(OUIDocumentPicker *self)
     // Get rid of any visible popovers immediately
     [[OUIAppController controller] dismissPopoverAnimated:NO];
     
-    NSString *documentType = [self documentTypeForNewFiles];
-    NSURL *newDocumentURL = [self urlForNewDocumentOfType:documentType];
-    NSError *error = nil;
-    if (![_nonretained_delegate createNewDocumentAtURL:newDocumentURL error:&error]) {
-        OUI_PRESENT_ERROR(error);
-        return;
-    }
+    [self _beginIgnoringDocumentsDirectoryUpdates];
     
-    _isRevealingNewDocument = YES;
+    [[UIApplication sharedApplication] beginIgnoringInteractionEvents];
     
-    [[NSFileManager defaultManager] touchFile:[[newDocumentURL absoluteURL] path]];
-    [self revealAndActivateNewDocumentAtURL:newDocumentURL];
+    [_documentStore createNewDocument:^(OFSDocumentStoreFileItem *createdFileItem, NSError *error){
+
+        if (!createdFileItem) {
+            [[UIApplication sharedApplication] endIgnoringInteractionEvents];
+            [self _endIgnoringDocumentsDirectoryUpdates];
+            OUI_PRESENT_ERROR(error);
+            return;
+        }
+        
+        _isRevealingNewDocument = YES;
+        
+        // We want the file item to have a new date, but this is the wrong place to do it. Want to do it in the document picker before it creates the item.
+        // [[NSFileManager defaultManager] touchItemAtURL:createdItem.fileURL error:NULL];
+        
+        [self _revealAndActivateNewDocumentFileItem:createdFileItem completionHandler:^{
+            [[UIApplication sharedApplication] endIgnoringInteractionEvents];
+            [self _endIgnoringDocumentsDirectoryUpdates];
+        }];
+    }];
 }
 
 - (IBAction)duplicateDocument:(id)sender;
 {
-    OUIDocumentProxy *proxy = _previewScrollView.proxyClosestToCenter;
-    if (!proxy) {
+    [[OUIAppController controller] dismissActionSheetAndPopover:YES];
+    
+    NSSet *selectedFileItems = self.selectedFileItems;
+    if ([selectedFileItems count] == 0) {
         OBASSERT_NOT_REACHED("Make this button be disabled");
         return;
     }
     
-    NSURL *url = proxy.url;
-    NSString *originalPath = [[url absoluteURL] path];
-    NSString *extension = [[originalPath lastPathComponent] pathExtension];
-    if (extension == nil)
-        return;
-    
-    // If the proxy name ends in a number, we are likely duplicating a duplicate.  Take that as our starting counter.  Of course, this means that if we duplicate "Revenue 2010", we'll get "Revenue 2011". But, w/o this we'll get "Revenue 2010 2", "Revenue 2010 2 2", etc.
-    NSString *name;
-    NSUInteger counter;
-    OFSFileManagerSplitNameAndCounter(proxy.name, &name, &counter);
-    
-    NSString *duplicatePath = _availablePath([[self class] userDocumentsDirectory], name, (NSString *)extension, &counter);
+    NSMutableArray *duplicateFileItems = [NSMutableArray array];
+    NSMutableArray *errors = [NSMutableArray array];
+    NSMutableArray *duplicateOperations = [NSMutableArray array];
 
-    NSError *error = nil;
-    if (![[NSFileManager defaultManager] copyItemAtPath:originalPath toPath:duplicatePath error:&error]) {
-        NSLog(@"Unable to duplicate %@ to %@: %@", originalPath, duplicatePath, [error toPropertyList]);
-        return;
-    }
+    // We'll update once at the end
+    [self _beginIgnoringDocumentsDirectoryUpdates];
     
-    NSURL *duplicateURL = [NSURL fileURLWithPath:duplicatePath];
+    for (OFSDocumentStoreFileItem *fileItem in selectedFileItems) {
+        // The queue is concurrent, so we need to remember all the enqueued blocks and make them dependencies of our completion
+        NSOperation *op = [_documentStore addDocumentFromURL:fileItem.fileURL option:OFSDocumentStoreAddByRenaming completionHandler:^(OFSDocumentStoreFileItem *duplicateFileItem, NSError *error) {
+            OBASSERT([NSThread isMainThread]); // gets enqueued on the main thread, but even if it was invoked on the background serial queue, this would be OK as long as we don't access the mutable arrays until all the blocks are done
+            if (duplicateFileItem)
+                [duplicateFileItems addObject:duplicateFileItem];
+            else {
+                OBASSERT(error);
+                if (error) // let's not crash, though...
+                    [errors addObject:error]; 
+            }
+            
+            // Copy the previews for the original file item to be the previews for the duplicate.
+            [OUIDocumentPreview cachePreviewImagesForFileURL:duplicateFileItem.fileURL date:duplicateFileItem.date
+                                    byDuplicatingFromFileURL:fileItem.fileURL date:fileItem.date];
+            
+        }];
+        [duplicateOperations addObject:op];
+    }
 
-    // Scan for new proxies and set up the new one.
-    OUIDocumentProxy *duplicateProxy;
-    {
-        [self _loadProxies];
-        
-        duplicateProxy = [self proxyWithURL:duplicateURL];
-        OBASSERT(duplicateProxy);
-        OBASSERT(duplicateProxy.currentPreview == nil);
-        
-        // At first it should not take up space.
-        duplicateProxy.layoutShouldAdvance = NO;
-        
-        // The duplicate has exactly the same preview as the original, avoid loading it redundantly.
-        [duplicateProxy previewDidLoad:proxy.currentPreview];
-        OBASSERT(duplicateProxy.currentPreview != nil);
-    }
-    
-    // Do a non-animated layout. This gets the proxy a view (hidden) assigned to it.
-    OBASSERT(duplicateProxy.view == nil); // starts out without a view
-    [_previewScrollView layoutSubviews];
-    [self setSelectedProxy:duplicateProxy scrolling:YES animated:NO]; // shouldn't need to animate since it *should* typically be right next to the original. not always if there is a gap in numbering dups, though.
-    OBASSERT(duplicateProxy.view != nil); // should have had a view assigned.
-    duplicateProxy.view.alpha = 0; // start out transparent
-    
-    // Turn on layout advancing for this proxy and do an animated layout, sliding to make room for it.
-    duplicateProxy.layoutShouldAdvance = YES;
+    OBASSERT([duplicateOperations count] > 0); // we checked we have items above
 
-    // The end result will have the new document proxy in place, but transparent.
-    [UIView beginAnimations:@"duplicate document slide" context:duplicateProxy];
-    [UIView setAnimationDuration:0.2];
-    [UIView setAnimationDidStopSelector:@selector(_duplicationSlideAnimationDidStop:finished:context:)];
-    [UIView setAnimationDelegate:self];
-    {
-        [_previewScrollView layoutSubviews];
-    }
-    [UIView commitAnimations];
+    NSBlockOperation *allCompleted = [NSBlockOperation blockOperationWithBlock:^{
+        
+        [self _endIgnoringDocumentsDirectoryUpdates];
+        
+        for (OFSDocumentStoreFileItem *duplicateFileItem in duplicateFileItems) {        
+            // At first it should not take up space.
+            //duplicateFileItem.layoutShouldAdvance = NO;
+            
+            // TODO: Can we still do this, now that the file item doesn't have the previews? Maybe we should just reload them and wait to start the animation until they are loaded, or some such.
+#if 0
+            // The duplicate has exactly the same preview as the original, avoid loading it redundantly.
+            OFSDocumentStoreFileItem *originalFileItem = [duplicateURLToOriginalFileItem objectForKey:duplicateURL];
+            [duplicateFileItem previewDidLoad:originalFileItem.currentPreview];
+            OBASSERT(duplicateFileItem.currentPreview != nil);
+#endif
+        }
+        
+        // iWork slides the old items into their new places and then zooms the new items out from its center (the new item appears right after the thing it was copied from (in both name/date sorting mode).
+        OBFinishPortingLater("Re-add a duplication animation");
+        [self clearSelection:YES];
+        
+        [self.activeScrollView setNeedsLayout];
+        [self.activeScrollView layoutIfNeeded];
+
+        // This may be annoying if there were several errors, but it is misleading to not do it...
+        for (NSError *error in errors)
+            OUI_PRESENT_ALERT(error);
+    }];
+    
+    for (NSOperation *op in duplicateOperations)
+        [allCompleted addDependency:op];
+    
+    [[NSOperationQueue mainQueue] addOperation:allCompleted];
 }
 
 - (void)replaceDocumentAlert:(OUIReplaceDocumentAlert *)alert didDismissWithButtonIndex:(NSInteger)buttonIndex documentURL:(NSURL *)documentURL;
 {
-    NSString *urlName = [OFSFileInfo nameForURL:documentURL];
-
+    // TODO: Would like to find a better way to code this so we don't have so much duplicated.
     switch (buttonIndex) {
         case 0: /* Cancel */
             break;
         
         case 1: /* Replace */
         {
-            NSString *testPath = [[[self class] userDocumentsDirectory] stringByAppendingPathComponent:urlName];
-            NSError *error = nil;
-            if (![[NSFileManager defaultManager] removeItemAtPath:testPath error:&error]) {
-                OUI_PRESENT_ERROR(error);
-                return;
-            }
-            
-            [self addDocumentFromURL:documentURL];
-            
+            [[UIApplication sharedApplication] beginIgnoringInteractionEvents];
+            [_documentStore addDocumentFromURL:documentURL option:OFSDocumentStoreAddByReplacing completionHandler:^(OFSDocumentStoreFileItem *duplicateFileItem, NSError *error) {
+                if (!duplicateFileItem) {
+                    OUI_PRESENT_ERROR(error);
+                    [[UIApplication sharedApplication] endIgnoringInteractionEvents];
+                    return;
+                }
+                
+                [self _revealAndActivateNewDocumentFileItem:duplicateFileItem completionHandler:^{
+                    [[UIApplication sharedApplication] endIgnoringInteractionEvents];
+                }];
+            }];
             break;
         }
-        case 2: /* Add */
+        case 2: /* Rename */
         {
-            NSString *originalPath = [[documentURL absoluteURL] path];
-            NSString *extension = [[originalPath lastPathComponent] pathExtension];
-            
-            NSString *name;
-            NSUInteger counter;
-            urlName = [urlName stringByDeletingPathExtension];
-            OFSFileManagerSplitNameAndCounter(urlName, &name, &counter);
-            
-            NSString *duplicatePath = _availablePath([[self class] userDocumentsDirectory], name, (NSString *)extension, &counter);
-            NSError *error = nil;
-            if (![[NSFileManager defaultManager] moveItemAtPath:originalPath toPath:duplicatePath error:&error]) {
-                OUI_PRESENT_ERROR(error);
-                return;
-            }
-            
-            [self revealAndActivateNewDocumentAtURL:[NSURL fileURLWithPath:duplicatePath]];
-            
+            [[UIApplication sharedApplication] beginIgnoringInteractionEvents];
+            [_documentStore addDocumentFromURL:documentURL option:OFSDocumentStoreAddByRenaming completionHandler:^(OFSDocumentStoreFileItem *duplicateFileItem, NSError *error) {
+                if (!duplicateFileItem) {
+                    OUI_PRESENT_ERROR(error);
+                    [[UIApplication sharedApplication] endIgnoringInteractionEvents];
+                    return;
+                }
+                
+                [self _revealAndActivateNewDocumentFileItem:duplicateFileItem completionHandler:^{
+                    [[UIApplication sharedApplication] endIgnoringInteractionEvents];
+                }];
+            }];
             break;
         }
         default:
@@ -817,18 +555,8 @@ static id _commonInit(OUIDocumentPicker *self)
 
 - (void)addDocumentFromURL:(NSURL *)url;
 {
-    NSString *originalPath = [[url absoluteURL] path];
-    NSString *extension = [[originalPath lastPathComponent] pathExtension];
-    if (extension == nil)
-        return;
-    
-    // If the proxy name ends in a number, we are likely duplicating a duplicate.  Take that as our starting counter.  Of course, this means that if we duplicate "Revenue 2010", we'll get "Revenue 2011". But, w/o this we'll get "Revenue 2010 2", "Revenue 2010 2 2", etc.
-    NSString *name;
-    NSUInteger counter;
-    NSString *urlName = [OFSFileInfo nameForURL:url];
-    
-    NSString *testPath = [[[self class] userDocumentsDirectory] stringByAppendingPathComponent:urlName];
-    if ([[NSFileManager defaultManager] fileExistsAtPath:testPath]) {
+    if ([_documentStore userFileExistsWithFileNameOfURL:url]) {
+        // If a file with the same name already exists, we need to ask the user if they want to cancel, replace, or rename the document.
         OBASSERT(_replaceDocumentAlert == nil); // this should never happen
         _replaceDocumentAlert = [[OUIReplaceDocumentAlert alloc] initWithDelegate:self documentURL:url];
         [_replaceDocumentAlert show];
@@ -836,62 +564,92 @@ static id _commonInit(OUIDocumentPicker *self)
         return;
     }
     
-    urlName = [urlName stringByDeletingPathExtension];
-    OFSFileManagerSplitNameAndCounter(urlName, &name, &counter);
+    [[UIApplication sharedApplication] beginIgnoringInteractionEvents];
+    [_documentStore addDocumentFromURL:url option:OFSDocumentStoreAddNormally completionHandler:^(OFSDocumentStoreFileItem *duplicateFileItem, NSError *error) {
+        if (!duplicateFileItem) {
+            OUI_PRESENT_ERROR(error);
+            [[UIApplication sharedApplication] endIgnoringInteractionEvents];
+            return;
+        }
+        
+        [self _revealAndActivateNewDocumentFileItem:duplicateFileItem completionHandler:^{
+            [[UIApplication sharedApplication] endIgnoringInteractionEvents];
+        }];
+    }];
+}
+
+- (void)exportedDocumentToURL:(NSURL *)url;
+{
+    [self rescanDocuments];
+    [self clearSelection:YES];
+}
+
+- (NSArray *)availableExportTypesForFileItem:(OFSDocumentStoreFileItem *)fileItem withSyncType:(OUISyncType)syncType exportOptionsType:(OUIExportOptionsType)exportOptionsType;
+{
+    NSMutableArray *exportTypes = [NSMutableArray array];
     
-    NSString *duplicatePath = _availablePath([[self class] userDocumentsDirectory], name, (NSString *)extension, &counter);
-    NSError *error = nil;
-    if (![[NSFileManager defaultManager] moveItemAtPath:originalPath toPath:duplicatePath error:&error]) {
-        OUI_PRESENT_ERROR(error);
-        return;
+    // Get All Available Export Types
+    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:availableExportTypesForFileItem:withSyncType:exportOptionsType:)]) {
+        [exportTypes addObjectsFromArray:[_nonretained_delegate documentPicker:self availableExportTypesForFileItem:fileItem withSyncType:syncType exportOptionsType:exportOptionsType]];
+    } else {
+        // PDF PNG Fallbacks
+        BOOL canMakePDF = [_nonretained_delegate respondsToSelector:@selector(documentPicker:PDFDataForFileItem:error:)];
+        BOOL canMakePNG = [_nonretained_delegate respondsToSelector:@selector(documentPicker:PNGDataForFileItem:error:)];
+        if (canMakePDF)
+            [exportTypes addObject:(NSString *)kUTTypePDF];
+        if (canMakePNG)
+            [exportTypes addObject:(NSString *)kUTTypePNG];
     }
     
-    [self revealAndActivateNewDocumentAtURL:[NSURL fileURLWithPath:duplicatePath]];
-}
-
-- (NSString *)editNameForDocumentURL:(NSURL *)url;
-{
-    return [[[url path] lastPathComponent] stringByDeletingPathExtension];
-}
-
-- (NSString *)displayNameForDocumentURL:(NSURL *)url;
-{
-    Class proxyClass = [_nonretained_delegate documentPicker:self proxyClassForURL:url];
-    if (proxyClass == Nil)
-        proxyClass = [OUIDocumentProxy class];
-    return [proxyClass displayNameForURL:url];
-}
-
-- (NSArray *)availableExportTypesForProxy:(OUIDocumentProxy *)proxy;
-{
-    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:availableExportTypesForProxy:)])
-        return [_nonretained_delegate documentPicker:self availableExportTypesForProxy:proxy];
-
-    NSMutableArray *exportTypes = [NSMutableArray array];
-    BOOL canMakePDF = [_nonretained_delegate respondsToSelector:@selector(documentPicker:PDFDataForProxy:error:)];
-    BOOL canMakePNG = [_nonretained_delegate respondsToSelector:@selector(documentPicker:PNGDataForProxy:error:)];
-    if (canMakePDF)
-        [exportTypes addObject:(NSString *)kUTTypePDF];
-    if (canMakePNG)
-        [exportTypes addObject:(NSString *)kUTTypePNG];
+    if ((syncType == OUISyncTypeNone) ||
+        (exportOptionsType == OUIExportOptionsNone)) {
+        // We're just looking for a rough count of how export types are available. Let's just return what we have.
+        return exportTypes;
+    }
+    
+    // Using Send To App
+    if (exportOptionsType == OUIExportOptionsSendToApp) {
+        NSMutableArray *docInteractionExportTypes = [NSMutableArray array];
+        
+        // check our own type here
+        OBFinishPortingLater("<bug:///75843> (Add a UTI property to OFSDocumentStoreFileItem)");
+        if ([self _canUseOpenInWithExportType:OFUTIForFileExtensionPreferringNative([fileItem.fileURL pathExtension], NO)]) // if ([self _canUseOpenInWithExportType:[OFSFileInfo UTIForURL:fileItem.fileURL]])
+            [docInteractionExportTypes addObject:[NSNull null]];
+        
+        for (NSString *exportType in exportTypes) {
+            if (OFNOTNULL(exportType) &&
+                [self _canUseOpenInWithExportType:exportType]) {
+                    [docInteractionExportTypes addObject:exportType];
+            }
+        }
+        
+        return docInteractionExportTypes;
+    }
+    
     return exportTypes;
 }
 
-- (NSArray *)availableImageExportTypesForProxy:(OUIDocumentProxy *)proxy;
+- (NSArray *)availableImageExportTypesForFileItem:(OFSDocumentStoreFileItem *)fileItem;
 {
     NSMutableArray *imageExportTypes = [NSMutableArray array];
-    NSArray *exportTypes = [self availableExportTypesForProxy:proxy];
+    NSArray *exportTypes = [self availableExportTypesForFileItem:fileItem withSyncType:OUISyncTypeNone exportOptionsType:OUIExportOptionsNone];
     for (NSString *exportType in exportTypes) {
-        if (UTTypeConformsTo((CFStringRef)exportType, kUTTypeImage))
-            [imageExportTypes addObject:exportType];
+        if (OFNOTNULL(exportType) &&
+            UTTypeConformsTo((CFStringRef)exportType, kUTTypeImage)) {
+                [imageExportTypes addObject:exportType];
+        }
     }
     return imageExportTypes;
 }
 
-// Helper method for -availableDocuentInteractionExportTypesForProxy:
+- (BOOL)isExportThreadSafe;
+{
+    return YES;
+}
+
+// Helper method for -availableDocuentInteractionExportTypesForFileItem:
 - (BOOL)_canUseOpenInWithExportType:(NSString *)exportType;
 {
-    NSLog(@"self.openInMapCache: %@", self.openInMapCache);
     NSNumber *value = [self.openInMapCache objectForKey:exportType];
     if (value) {
         // We have a cached value, so immediately return it.
@@ -962,43 +720,40 @@ static id _commonInit(OUIDocumentPicker *self)
     
     return success;
 }
-- (NSArray *)availableDocumentInteractionExportTypesForProxy:(OUIDocumentProxy *)proxy;
-{
-    NSMutableArray *docInteractionExportTypes = [NSMutableArray array];
-    
 
-    NSArray *exportTypes = [self availableExportTypesForProxy:proxy];
-    for (NSString *exportType in exportTypes) {
-        if ([self _canUseOpenInWithExportType:exportType]) {
-            [docInteractionExportTypes addObject:exportType];
-        }
+- (void)exportFileWrapperOfType:(NSString *)exportType forFileItem:(OFSDocumentStoreFileItem *)fileItem withCompletionHandler:(void (^)(NSFileWrapper *fileWrapper, NSError *error))completionHandler;
+{
+    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:exportFileWrapperOfType:forFileItem:withCompletionHandler:)]) {
+        [_nonretained_delegate documentPicker:self exportFileWrapperOfType:exportType forFileItem:fileItem withCompletionHandler:^(NSFileWrapper *fileWrapper, NSError *error) {
+            if (completionHandler) {
+                completionHandler(fileWrapper, error);
+            }
+        }];
+        return;
     }
     
-    return docInteractionExportTypes;
-}
-- (OFFileWrapper *)exportFileWrapperOfType:(NSString *)exportType forProxy:(OUIDocumentProxy *)proxy error:(NSError **)outError;
-{
-    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:exportFileWrapperOfType:forProxy:error:)])
-        return [_nonretained_delegate documentPicker:self exportFileWrapperOfType:exportType forProxy:proxy error:outError];
-
     // If the delegate doesn't implement the new file wrapper export API, try the older NSData API
     NSData *fileData = nil;
     NSString *pathExtension = nil;
-
-    if (UTTypeConformsTo((CFStringRef)exportType, kUTTypePDF) && [_nonretained_delegate respondsToSelector:@selector(documentPicker:PDFDataForProxy:error:)]) {
-        fileData = [_nonretained_delegate documentPicker:self PDFDataForProxy:proxy error:outError];
+    NSError *error = nil;
+    
+    if (UTTypeConformsTo((CFStringRef)exportType, kUTTypePDF) && [_nonretained_delegate respondsToSelector:@selector(documentPicker:PDFDataForFileItem:error:)]) {
+        fileData = [_nonretained_delegate documentPicker:self PDFDataForFileItem:fileItem error:&error];
         pathExtension = @"pdf";
-    } else if (UTTypeConformsTo((CFStringRef)exportType, kUTTypePNG) && [_nonretained_delegate respondsToSelector:@selector(documentPicker:PNGDataForProxy:error:)]) {
-        fileData = [_nonretained_delegate documentPicker:self PNGDataForProxy:proxy error:outError];
+    } else if (UTTypeConformsTo((CFStringRef)exportType, kUTTypePNG) && [_nonretained_delegate respondsToSelector:@selector(documentPicker:PNGDataForFileItem:error:)]) {
+        fileData = [_nonretained_delegate documentPicker:self PNGDataForFileItem:fileItem error:&error];
         pathExtension = @"png";
     }
-
+    
     if (fileData == nil)
-        return nil;
-
-    OFFileWrapper *fileWrapper = [[OFFileWrapper alloc] initRegularFileWithContents:fileData];
-    fileWrapper.preferredFilename = [[proxy name] stringByAppendingPathExtension:pathExtension];
-    return [fileWrapper autorelease];
+        completionHandler(nil, error);
+    
+    NSFileWrapper *fileWrapper = [[[NSFileWrapper alloc] initRegularFileWithContents:fileData] autorelease];
+    fileWrapper.preferredFilename = [fileItem.name stringByAppendingPathExtension:pathExtension];
+    
+    if (completionHandler) {
+        completionHandler(fileWrapper, error);
+    }
 }
 
 - (UIImage *)_iconForUTI:(NSString *)fileUTI targetSize:(NSUInteger)targetSize;
@@ -1102,51 +857,45 @@ static id _commonInit(OUIDocumentPicker *self)
     return nil;
 }
 
-// Once the sliding of layout has happened in duplication, fade in the new proxy.
-- (void)_duplicationSlideAnimationDidStop:(NSString *)animationID finished:(NSNumber *)finished context:(void *)context;
+- (NSString *)deleteDocumentTitle:(NSUInteger)count;
 {
-    OUIDocumentProxy *duplicateProxy = context;
+    OBPRECONDITION(count > 0);
     
-    [UIView beginAnimations:@"fade in document" context:NULL];
-    [UIView setAnimationDuration:0.2];
-    [UIView setAnimationDelegate:self];
-    [UIView setAnimationWillStartSelector:@selector(_logAnimationWillStart:context:)];
-    {
-        duplicateProxy.view.alpha = 1.0;
-    }
-    [UIView commitAnimations];
-}
-
-- (NSString *)deleteDocumentTitle;
-{
-    return NSLocalizedStringFromTableInBundle(@"Delete Document", @"OmniUI", OMNI_BUNDLE, @"delete button title");
+    if (count == 1)
+        return NSLocalizedStringFromTableInBundle(@"Delete Document", @"OmniUI", OMNI_BUNDLE, @"delete button title");
+    return [NSString stringWithFormat:NSLocalizedStringFromTableInBundle(@"Delete %ld Documents", @"OmniUI", OMNI_BUNDLE, @"delete button title"), count];
 }
 
 - (IBAction)deleteDocument:(id)sender;
 {
+    NSSet *fileItemsToDelete = [[self selectedFileItems] select:^(id obj){
+        return [self canEditFileItem:obj];
+    }];
+    
+    if ([fileItemsToDelete count] == 0) {
+        OBASSERT_NOT_REACHED("Delete toolbar item shouldn't have been enabled");
+        return;
+    }
+    
     if (![self okayToOpenMenu])
         return;
 
-    UIActionSheet *actionSheet = [[[UIActionSheet alloc] initWithTitle:nil delegate:self
-                                                     cancelButtonTitle:nil
-                                                destructiveButtonTitle:[self deleteDocumentTitle]
-                                                     otherButtonTitles:nil] autorelease];
+    OUIActionSheet *actionSheet = [[[OUIActionSheet alloc] initWithIdentifier:kActionSheetDeleteIdentifier] autorelease];
+    [actionSheet setDestructiveButtonTitle:[self deleteDocumentTitle:[fileItemsToDelete count]]
+                                 andAction:^{
+                                     [[UIApplication sharedApplication] beginIgnoringInteractionEvents];
+                                     [self _deleteWithoutConfirmation:fileItemsToDelete];
+                                 }];
 
-    [_actionSheetInvocations release];
-    _actionSheetInvocations = [[NSMutableArray alloc] init];
 
-    [_actionSheetInvocations addObject:[NSInvocation invocationWithTarget:self action:@selector(_deleteWithoutConfirmation)]];
-
-    [actionSheet showFromRect:[sender frame] inView:[sender superview] animated:YES];
-    
-    _nonretainedActionSheet = actionSheet;
+    [[OUIAppController controller] showActionSheet:actionSheet fromSender:sender animated:YES];
 }
 
 - (NSString *)printTitle;
 // overridden by Graffle to return "Print (landscape) or Print (portrait)"
 {
-    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:printButtonTitleForProxy:)]) {
-        return [_nonretained_delegate documentPicker:self printButtonTitleForProxy:nil];
+    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:printButtonTitleForFileItem:)]) {
+        return [_nonretained_delegate documentPicker:self printButtonTitleForFileItem:nil];
     }
     
     return NSLocalizedStringFromTableInBundle(@"Print", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view");
@@ -1157,87 +906,151 @@ static id _commonInit(OUIDocumentPicker *self)
     if (![self okayToOpenMenu])
         return;
 
-    OUIDocumentProxy *proxy = _previewScrollView.proxyClosestToCenter;
-    if (!proxy) {
+    OFSDocumentStoreFileItem *fileItem = self.singleSelectedFileItem;
+    if (!fileItem){
         OBASSERT_NOT_REACHED("Make this button be disabled");
         return;
     }
     
-    NSURL *url = proxy.url;
+    NSURL *url = fileItem.fileURL;
     if (url == nil)
         return;
 
-    UIActionSheet *actionSheet = [[[UIActionSheet alloc] initWithTitle:nil delegate:self cancelButtonTitle:nil destructiveButtonTitle:nil otherButtonTitles:nil] autorelease];
-    [_actionSheetInvocations release];
-    _actionSheetInvocations = [[NSMutableArray alloc] init];
+    OUIActionSheet *actionSheet = [[[OUIActionSheet alloc] initWithIdentifier:kActionSheetExportIdentifier] autorelease];
     
     BOOL canExport = [[OFPreferenceWrapper sharedPreferenceWrapper] boolForKey:@"OUIExportEnabled"];
-    NSArray *availableExportTypes = [self availableExportTypesForProxy:proxy];
-    NSArray *availableImageExportTypes = [self availableImageExportTypesForProxy:proxy];
-    BOOL canSendToCameraRoll = [_nonretained_delegate respondsToSelector:@selector(documentPicker:cameraRollImageForProxy:)];
+    NSArray *availableExportTypes = [self availableExportTypesForFileItem:fileItem withSyncType:OUISyncTypeNone exportOptionsType:OUIExportOptionsNone];
+    NSArray *availableImageExportTypes = [self availableImageExportTypesForFileItem:fileItem];
+    BOOL canSendToCameraRoll = [_nonretained_delegate respondsToSelector:@selector(documentPicker:cameraRollImageForFileItem:)];
     BOOL canPrint = NO;
-    BOOL canUseOpenIn = [self _canUseOpenInWithProxy:[self selectedProxy]];
+    BOOL canUseOpenIn = [self _canUseOpenInWithFileItem:fileItem];
+    BOOL ubiquityEnabled = [OFSDocumentStore isUbiquityAccessEnabled];
     
-    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:printProxy:fromButton:)])
-        if (NSClassFromString(@"UIPrintInteractionController") != nil)
-            if ([UIPrintInteractionController isPrintingAvailable])  // "Some iOS devices do not support printing"
-                canPrint = YES;
+    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:printFileItem:fromButton:)])
+        if ([UIPrintInteractionController isPrintingAvailable])  // "Some iOS devices do not support printing"
+            canPrint = YES;
     
     if ([MFMailComposeViewController canSendMail]) {
         // All email options should go here (within the test for whether we can send email)
         // more than one option? Display the 'export options sheet'
-        [actionSheet addButtonWithTitle:NSLocalizedStringFromTableInBundle(@"Send via Mail", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view")];
-        [_actionSheetInvocations addObject:[NSInvocation invocationWithTarget:self action:(availableExportTypes.count > 0 ? @selector(emailDocumentChoice:) : @selector(emailDocument:))]];
+        [actionSheet addButtonWithTitle:NSLocalizedStringFromTableInBundle(@"Send via Mail", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view")
+                              forAction:^{
+                                  if (availableExportTypes.count > 0)
+                                      [self emailDocumentChoice:self];
+                                  else
+                                      [self emailDocument:self];
+                              }];
     }
     
     if (canExport) {
-        [actionSheet addButtonWithTitle:NSLocalizedStringFromTableInBundle(@"Export", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view")];
-        [_actionSheetInvocations addObject:[NSInvocation invocationWithTarget:self action:(availableExportTypes.count > 0 ? @selector(exportDocumentChoice:) : @selector(exportDocument:))]];
+        [actionSheet addButtonWithTitle:NSLocalizedStringFromTableInBundle(@"Export", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view")
+                              forAction:^{
+                                  [self exportDocument:self];
+                              }];
     }
     
     if (canUseOpenIn) {
-        [actionSheet addButtonWithTitle:NSLocalizedStringFromTableInBundle(@"Send to App", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view")];
-        [_actionSheetInvocations addObject:[NSInvocation invocationWithTarget:self action:@selector(sendToApp:)]];
+        [actionSheet addButtonWithTitle:NSLocalizedStringFromTableInBundle(@"Send to App", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view")
+                              forAction:^{
+                                  [self sendToApp:self];
+                              }];
     }
     
     if (availableImageExportTypes.count > 0) {
-        [actionSheet addButtonWithTitle:NSLocalizedStringFromTableInBundle(@"Copy as Image", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view")];
-        [_actionSheetInvocations addObject:[NSInvocation invocationWithTarget:self action:@selector(copyAsImage:)]];
+        [actionSheet addButtonWithTitle:NSLocalizedStringFromTableInBundle(@"Copy as Image", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view")
+                              forAction:^{
+                                  [self copyAsImage:self];
+        }];
     }
     
     if (canSendToCameraRoll) {
-        [actionSheet addButtonWithTitle:NSLocalizedStringFromTableInBundle(@"Send to Photos", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view")];
-        [_actionSheetInvocations addObject:[NSInvocation invocationWithTarget:self action:@selector(sendToCameraRoll:)]];
+        [actionSheet addButtonWithTitle:NSLocalizedStringFromTableInBundle(@"Send to Photos", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view")
+                              forAction:^{
+                                  [self sendToCameraRoll:self];
+                              }];
     }
     
     if (canPrint) {
         NSString *printTitle = [self printTitle];
-        [actionSheet addButtonWithTitle:printTitle];
-        [_actionSheetInvocations addObject:[NSInvocation invocationWithTarget:self action:@selector(printDocument:)]];
+        [actionSheet addButtonWithTitle:printTitle
+                              forAction:^{
+                                  [self printDocument:self];
+                              }];
     }
 
-    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:addExportActionsToSheet:invocations:)])
-        [_nonretained_delegate documentPicker:self addExportActionsToSheet:actionSheet invocations:_actionSheetInvocations];
-
-    [actionSheet showFromRect:[sender frame] inView:[sender superview] animated:YES];
+    if (ubiquityEnabled) {
+        // OBFinishPorting: decide on real UI for this
+        {
+            BOOL isUbiquitous = [[NSFileManager defaultManager] isUbiquitousItemAtURL:url];
+            
+            if (!isUbiquitous) {
+                [actionSheet addButtonWithTitle:NSLocalizedStringFromTableInBundle(@"Move to iCloud", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view")
+                                      forAction:^{
+                                          [self moveToCloud:self];
+                                      }];
+            } else {
+                [actionSheet addButtonWithTitle:NSLocalizedStringFromTableInBundle(@"Move out of iCloud", @"OmniUI", OMNI_BUNDLE, @"Menu option in the document picker view")
+                                      forAction:^{
+                                          [self moveOutOfCloud:self];
+                                      }];
+            }
+        }
+    }
     
-    _nonretainedActionSheet = actionSheet;
+    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:addExportActions:)]) {
+        [_nonretained_delegate documentPicker:self addExportActions:^(NSString *title, void (^action)(void)){
+            [actionSheet addButtonWithTitle:title
+                                  forAction:action];
+        }];
+     }
+    
+    [[OUIAppController controller] showActionSheet:actionSheet fromSender:sender animated:YES];
+}
+
+static void _setSelectedDocumentsInCloud(OUIDocumentPicker *self, BOOL toCloud)
+{
+    // The move to iCloud will happen on a background thread; don't let the user muck with documents while it is happening.
+    OBASSERT([NSThread isMainThread]);
+    [[UIApplication sharedApplication] beginIgnoringInteractionEvents];
+    
+    [self->_documentStore moveFileItems:self.selectedFileItems toCloud:toCloud completionHandler:^(OFSDocumentStoreFileItem *failingItem, NSError *errorOrNil) {
+        OBASSERT([NSThread isMainThread]);
+        
+        [[UIApplication sharedApplication] endIgnoringInteractionEvents];
+        [self clearSelection:YES];
+
+        if (failingItem) {
+            NSLog(@"Failed to move %@ toCloud:%d: %@", [failingItem shortDescription], toCloud, errorOrNil);
+            OUI_PRESENT_ALERT(errorOrNil);
+        }
+    }];
+}
+
+- (void)moveToCloud:(id)sender;
+{
+    _setSelectedDocumentsInCloud(self, YES);
+}
+
+- (void)moveOutOfCloud:(id)sender;
+{
+    _setSelectedDocumentsInCloud(self, NO);
 }
 
 - (IBAction)emailDocument:(id)sender;
 {
-    OUIDocumentProxy *documentProxy = _previewScrollView.selectedProxy;
-    if (!documentProxy) {
+    OFSDocumentStoreFileItem *fileItem = self.singleSelectedFileItem;
+    if (!fileItem) {
         OBASSERT_NOT_REACHED("button should have been disabled");
         return;
     }
 
-    NSData *documentData = [documentProxy emailData];
-    NSString *documentFilename = [documentProxy emailFilename];
-    NSString *documentType = [OFSFileInfo UTIForFilename:documentFilename];
+    NSData *documentData = [fileItem emailData];
+    NSString *documentFilename = [fileItem emailFilename];
+    OBFinishPortingLater("<bug:///75843> (Add a UTI property to OFSDocumentStoreFileItem)");
+    NSString *documentType = OFUTIForFileExtensionPreferringNative([documentFilename pathExtension], NO); // NSString *documentType = [OFSFileInfo UTIForFilename:documentFilename];
     OBASSERT(documentType != nil); // UTI should be registered in the Info.plist under CFBundleDocumentTypes
 
-    [self _sendEmailWithSubject:[documentProxy name] messageBody:nil isHTML:NO attachmentName:documentFilename data:documentData fileType:documentType];
+    [self _sendEmailWithSubject:[fileItem name] messageBody:nil isHTML:NO attachmentName:documentFilename data:documentData fileType:documentType];
 }
 
 - (BOOL)_canUseEmailBodyForExportType:(NSString *)exportType;
@@ -1245,33 +1058,10 @@ static id _commonInit(OUIDocumentPicker *self)
     return ![_nonretained_delegate respondsToSelector:@selector(documentPicker:canUseEmailBodyForType:)] || [_nonretained_delegate documentPicker:self canUseEmailBodyForType:exportType];
 }
 
-- (OFFileWrapper *)fileWrapperForExportType:(NSString *)exportType;
+- (void)sendEmailWithFileWrapper:(NSFileWrapper *)fileWrapper forExportType:(NSString *)exportType;
 {
-    OUIDocumentProxy *documentProxy = self.selectedProxy;
-    if (!documentProxy) {
-        OBASSERT_NOT_REACHED("button should have been disabled");
-        return nil;
-    }
-    
-    if (OFISNULL(exportType)) {
-        [self emailDocument:nil];
-        return nil;
-    }
-    
-    NSError *error = nil;
-    OFFileWrapper *fileWrapper = [self exportFileWrapperOfType:exportType forProxy:documentProxy error:&error];
-    if (fileWrapper == nil) {
-        OUI_PRESENT_ERROR(error);
-        return nil;
-    }
-    
-    return fileWrapper;
-}
-
-- (void)sendEmailWithFileWrapper:(OFFileWrapper *)fileWrapper forExportType:(NSString *)exportType;
-{
-    OUIDocumentProxy *documentProxy = self.selectedProxy;
-    if (!documentProxy) {
+    OFSDocumentStoreFileItem *fileItem = self.singleSelectedFileItem;
+    if (!fileItem) {
         OBASSERT_NOT_REACHED("button should have been disabled");
         return;
     }
@@ -1279,21 +1069,23 @@ static id _commonInit(OUIDocumentPicker *self)
     if ([fileWrapper isDirectory]) {
         NSDictionary *childWrappers = [fileWrapper fileWrappers];
         if ([childWrappers count] == 1) {
-            OFFileWrapper *childWrapper = [childWrappers anyObject];
+            NSFileWrapper *childWrapper = [childWrappers anyObject];
             if ([childWrapper isRegularFile]) {
                 // File wrapper with just one file? Let's see if it's HTML which we can send as the message body (rather than as an attachment)
-                NSString *documentType = [OFSFileInfo UTIForFilename:childWrapper.preferredFilename];
+                NSString *documentType = OFUTIForFileExtensionPreferringNative(childWrapper.preferredFilename.pathExtension, childWrapper.isDirectory);
                 if (UTTypeConformsTo((CFStringRef)documentType, kUTTypeHTML)) {
                     if ([self _canUseEmailBodyForExportType:exportType]) {
                         NSString *messageBody = [[[NSString alloc] initWithData:[childWrapper regularFileContents] encoding:NSUTF8StringEncoding] autorelease];
                         if (messageBody != nil) {
-                            [self _sendEmailWithSubject:[documentProxy name] messageBody:messageBody isHTML:YES attachmentName:nil data:nil fileType:nil];
+                            [self _sendEmailWithSubject:fileItem.name messageBody:messageBody isHTML:YES attachmentName:nil data:nil fileType:nil];
                             return;
                         }
                     } else {
                         // Though we're not sending this as the HTML body, we really only need to attach the HTML itself
-                        childWrapper.preferredFilename = [fileWrapper.preferredFilename stringByAppendingPathExtension:[childWrapper.preferredFilename pathExtension]];
-                        fileWrapper = childWrapper;
+                        // When we try to change the preferredFilename on the childWrapper we are getting a '*** Collection <NSConcreteHashTable: 0x58b59b0> was mutated while being enumerated.' error. Tim and I tried a few things to get past this but decided to create a new NSFileWrapper.
+                        NSFileWrapper *singleChildFileWrapper = [[[NSFileWrapper alloc] initRegularFileWithContents:[childWrapper regularFileContents]] autorelease];
+                        singleChildFileWrapper.preferredFilename = [fileWrapper.preferredFilename stringByAppendingPathExtension:[childWrapper.preferredFilename pathExtension]];
+                        fileWrapper = singleChildFileWrapper;
                     }
                 }
             }
@@ -1308,13 +1100,13 @@ static id _commonInit(OUIDocumentPicker *self)
         emailType = exportType;
         emailData = [fileWrapper regularFileContents];
         
-        NSString *emailType = [OFSFileInfo UTIForFilename:fileWrapper.preferredFilename];
+        NSString *emailType = OFUTIForFileExtensionPreferringNative(fileWrapper.preferredFilename.pathExtension, NO);
         if (UTTypeConformsTo((CFStringRef)emailType, kUTTypePlainText)) {
             // Plain text? Let's send that as the message body
             if ([self _canUseEmailBodyForExportType:exportType]) {
                 NSString *messageBody = [[[NSString alloc] initWithData:emailData encoding:NSUTF8StringEncoding] autorelease];
                 if (messageBody != nil) {
-                    [self _sendEmailWithSubject:[documentProxy name] messageBody:messageBody isHTML:NO attachmentName:nil data:nil fileType:nil];
+                    [self _sendEmailWithSubject:fileItem.name messageBody:messageBody isHTML:NO attachmentName:nil data:nil fileType:nil];
                     return;
                 }
             }
@@ -1322,7 +1114,7 @@ static id _commonInit(OUIDocumentPicker *self)
     } else {
         NSError *error = nil;
         emailName = [fileWrapper.preferredFilename stringByAppendingPathExtension:@"zip"];
-        emailType = [OFSFileInfo UTIForFilename:emailName];
+        emailType = OFUTIForFileExtensionPreferringNative(@"zip", NO);
         NSString *zipPath = [NSTemporaryDirectory() stringByAppendingPathComponent:emailName];
         OMNI_POOL_START {
             if (![OUZipArchive createZipFile:zipPath fromFileWrappers:[NSArray arrayWithObject:fileWrapper] error:&error]) {
@@ -1333,18 +1125,20 @@ static id _commonInit(OUIDocumentPicker *self)
         emailData = [NSData dataWithContentsOfMappedFile:zipPath];
     }
     
-    [self _sendEmailWithSubject:[documentProxy name] messageBody:nil isHTML:NO attachmentName:emailName data:emailData fileType:emailType];
+    [self _sendEmailWithSubject:fileItem.name messageBody:nil isHTML:NO attachmentName:emailName data:emailData fileType:emailType];
 }
 
 - (void)emailExportType:(NSString *)exportType;
 {
-    OFFileWrapper *fileWrapper = [self fileWrapperForExportType:exportType];
-    [self sendEmailWithFileWrapper:fileWrapper forExportType:exportType];
-}
-
-- (void)exportDocumentChoice:(id)sender;
-{
-    [OUISyncMenuController displayInSheet];
+    OMNI_POOL_START {
+        [self exportFileWrapperOfType:exportType forFileItem:self.singleSelectedFileItem withCompletionHandler:^(NSFileWrapper *fileWrapper, NSError *error) {
+            if (fileWrapper == nil) {
+                OUI_PRESENT_ERROR(error);
+                return;
+            }
+            [self sendEmailWithFileWrapper:fileWrapper forExportType:exportType];
+        }];
+    } OMNI_POOL_END;
 }
 
 - (void)exportDocument:(id)sender;
@@ -1379,32 +1173,41 @@ static id _commonInit(OUIDocumentPicker *self)
 
 - (void)printDocument:(id)sender;
 {
-    OUIDocumentProxy *documentProxy = self.selectedProxy;
-    if (!documentProxy) {
+    OFSDocumentStoreFileItem *fileItem = self.singleSelectedFileItem;
+    if (!fileItem) {
         OBASSERT_NOT_REACHED("button should have been disabled");
         return;
     }
 
-    [_nonretained_delegate documentPicker:self printProxy:documentProxy fromButton:self.exportButton];
+    [_nonretained_delegate documentPicker:self printFileItem:fileItem fromButton:_exportBarButtonItem];
 }
 
 - (void)copyAsImage:(id)sender;
 {
-    OUIDocumentProxy *documentProxy = self.selectedProxy;
-    if (!documentProxy) {
+    OFSDocumentStoreFileItem *fileItem = self.singleSelectedFileItem;
+    if (!fileItem) {
         OBASSERT_NOT_REACHED("button should have been disabled");
         return;
     }
 
     UIPasteboard *pboard = [UIPasteboard generalPasteboard];
     NSMutableArray *items = [NSMutableArray array];
-    
-    BOOL canMakePDF = [_nonretained_delegate respondsToSelector:@selector(documentPicker:PDFDataForProxy:error:)];
-    BOOL canMakePNG = [_nonretained_delegate respondsToSelector:@selector(documentPicker:PNGDataForProxy:error:)];
-    
-    if (canMakePDF) {
+
+    BOOL canMakeCopyAsImageSpecificPDF = [_nonretained_delegate respondsToSelector:@selector(documentPicker:copyAsImageDataForFileItem:error:)];
+    BOOL canMakePDF = [_nonretained_delegate respondsToSelector:@selector(documentPicker:PDFDataForFileItem:error:)];
+    BOOL canMakePNG = [_nonretained_delegate respondsToSelector:@selector(documentPicker:PNGDataForFileItem:error:)];
+
+    //- (NSData *)documentPicker:(OUIDocumentPicker *)picker copyAsImageDataForFileItem:(OFSDocumentStoreFileItem *)fileItem error:(NSError **)outError;
+    if (canMakeCopyAsImageSpecificPDF) {
         NSError *error = nil;
-        NSData *pdfData = [_nonretained_delegate documentPicker:self PDFDataForProxy:documentProxy error:&error];
+        NSData *pdfData = [_nonretained_delegate documentPicker:self copyAsImageDataForFileItem:fileItem error:&error];
+        if (!pdfData)
+            OUI_PRESENT_ERROR(error);
+        else
+            [items addObject:[NSDictionary dictionaryWithObject:pdfData forKey:(id)kUTTypePDF]];
+    } else if (canMakePDF) {
+        NSError *error = nil;
+        NSData *pdfData = [_nonretained_delegate documentPicker:self PDFDataForFileItem:fileItem error:&error];
         if (!pdfData)
             OUI_PRESENT_ERROR(error);
         else
@@ -1412,9 +1215,9 @@ static id _commonInit(OUIDocumentPicker *self)
     }
     
     // Don't put more than one image format on the pasteboard, because both will get pasted into iWork.  <bug://bugs/61070>
-    if (!canMakePDF && canMakePNG) {
+    if (!canMakeCopyAsImageSpecificPDF &&!canMakePDF && canMakePNG) {
         NSError *error = nil;
-        NSData *pngData = [_nonretained_delegate documentPicker:self PNGDataForProxy:documentProxy error:&error];
+        NSData *pngData = [_nonretained_delegate documentPicker:self PNGDataForFileItem:fileItem error:&error];
         if (!pngData) {
             OUI_PRESENT_ERROR(error);
         }
@@ -1425,7 +1228,7 @@ static id _commonInit(OUIDocumentPicker *self)
     }
     
     // -setImage: also puts a title on the pasteboard, so we might as well. They append .jpg, but it isn't clear whether we should append .pdf or .png. Appending nothing.
-    NSString *title = [documentProxy name];
+    NSString *title = fileItem.name;
     if (![NSString isEmptyString:title])
         [items addObject:[NSDictionary dictionaryWithObject:title forKey:(id)kUTTypeUTF8PlainText]];
     
@@ -1437,15 +1240,18 @@ static id _commonInit(OUIDocumentPicker *self)
 
 - (void)sendToCameraRoll:(id)sender;
 {
-    OUIDocumentProxy *documentProxy = self.selectedProxy;
-    if (!documentProxy) {
+    OFSDocumentStoreFileItem *fileItem = self.singleSelectedFileItem;
+    if (!fileItem) {
         OBASSERT_NOT_REACHED("button should have been disabled");
         return;
     }
 
-    UIImage *image = [_nonretained_delegate documentPicker:self cameraRollImageForProxy:documentProxy];
+    UIImage *image = [_nonretained_delegate documentPicker:self cameraRollImageForFileItem:fileItem];
     if (!image) {  // Delegate can return nil to get the default implementation
-        image = [documentProxy cameraRollImage];
+        Class documentClass = [[OUISingleDocumentAppController controller] documentClassForURL:fileItem.fileURL];
+        OBASSERT(OBClassIsSubclassOfClass(documentClass, [OUIDocument class]));
+        
+        image = [documentClass cameraRollImageForFileItem:fileItem];
     }
     if (image) {
         UIImageWriteToSavedPhotosAlbum(image, self, @selector(_sendToCameraRollImage:didFinishSavingWithError:contextInfo:), NULL);
@@ -1457,67 +1263,7 @@ static id _commonInit(OUIDocumentPicker *self)
     OUI_PRESENT_ERROR(error);
 }
 
-@synthesize titleEditingField = _titleEditingField;
-
-- (IBAction)editTitle:(id)sender;
-{
-    _editingProxyURL = [[self.selectedProxy url] retain];
-    
-    if (!_titleEditingField) {
-        _titleEditingField = [[UITextField alloc] initWithFrame:CGRectZero];
-        _titleEditingField.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin; 
-        _titleEditingField.font = _titleLabel.titleLabel.font; 
-        _titleEditingField.textColor = [UIColor blackColor];
-        _titleEditingField.textAlignment = UITextAlignmentCenter;
-        _titleEditingField.borderStyle = UITextBorderStyleRoundedRect;
-        _titleEditingField.clearButtonMode = UITextFieldViewModeWhileEditing;
-        _titleEditingField.autocorrectionType = UITextAutocorrectionTypeNo;
-        _titleEditingField.autocapitalizationType = UITextAutocapitalizationTypeNone;
-
-        
-        _titleEditingField.delegate = self;
-        
-        
-        [self.view addSubview:_titleEditingField];
-    }
-    
-    CGRect senderFrame = [sender convertRect:[sender bounds] toView:self.view];
-    
-    CGRect titleEditingFieldFrame;
-    titleEditingFieldFrame.size.width = 400;
-    titleEditingFieldFrame.size.height = 35;
-    titleEditingFieldFrame.origin.x = CGRectGetMidX(senderFrame) - titleEditingFieldFrame.size.width/2;
-    titleEditingFieldFrame.origin.y = CGRectGetMidY(senderFrame) - titleEditingFieldFrame.size.height/2;
-    _titleEditingField.frame = titleEditingFieldFrame;
-    
-    _titleEditingField.text = _titleLabel.currentTitle;
-    
-    _titleEditingField.alpha = 1;
-    _editingTitle = YES;
-    _previewScrollView.disableLayout = YES;
-    _previewScrollView.disableRotationDisplay = YES;
-    
-    OUIDocumentPickerView *pickerView = (OUIDocumentPickerView *)self.view;
-    [pickerView setBottomToolbarHidden:YES animated:YES];
-    _previewScrollView.disableScroll = YES;
-    
-    [_titleEditingField becomeFirstResponder];
-    
-    [_titleEditingField setHidden:NO];
-    [_titleLabel setHidden:YES];
-    [_dateLabel setHidden:YES];
-    [_buttonGroupView setHidden:YES];
-}
-
-- (IBAction)documentSliderAction:(OUIDocumentSlider *)slider;
-{
-    if ([self editingTitle]) {
-        [[self titleEditingField] resignFirstResponder];
-    }
-    
-    [self.previewScrollView documentSliderAction:slider];
-}
-
+@synthesize filterViewContentSize = _filterViewContentSize;
 - (IBAction)filterAction:(UIView *)sender;
 {
     if (![self okayToOpenMenu])
@@ -1528,9 +1274,7 @@ static id _commonInit(OUIDocumentPicker *self)
         return;
 */
     
-    if ([self editingTitle]) {
-        [[self titleEditingField] resignFirstResponder];
-    }
+    OBASSERT(_renameViewController == nil); // Can't be renaming now; no need to try to stop.
     
     if (_filterPopoverController && [_filterPopoverController isPopoverVisible]) {
         [_filterPopoverController dismissPopoverAnimated:YES];
@@ -1540,9 +1284,16 @@ static id _commonInit(OUIDocumentPicker *self)
     }
 
     UITableViewController *table = [[UITableViewController alloc] initWithStyle:UITableViewStyleGrouped];
-    [[table tableView] setDelegate:self];
-    [[table tableView] setDataSource:self];
-    [table setContentSizeForViewInPopover:CGSizeMake(320, 110)];
+    UITableView *tableView = table.tableView;
+    tableView.autoresizingMask = 0;
+    [tableView setDelegate:self];
+    [tableView setDataSource:self];
+
+    [tableView reloadData];
+    OUITableViewAdjustHeightToFitContents(tableView);
+    tableView.scrollEnabled = NO;
+
+    [table setContentSizeForViewInPopover:_filterViewContentSize];
     // [table setContentSizeForViewInPopover:[[table tableView] rectForSection:0].size];
     _filterPopoverController = [[UIPopoverController alloc] initWithContentViewController:table];
     [table release];
@@ -1550,163 +1301,65 @@ static id _commonInit(OUIDocumentPicker *self)
     [[OUIAppController controller] presentPopover:_filterPopoverController fromRect:[sender frame] inView:[sender superview] permittedArrowDirections:UIPopoverArrowDirectionAny animated:YES];
 }
 
-#pragma mark -
-#pragma mark UITextField delegate
-
-- (void)showButtonsAfterEditing;
++ (OFPreference *)sortPreference;
 {
-    [_titleLabel setAlpha:0];
-    [_dateLabel setAlpha:0];
-    [_buttonGroupView setAlpha:0];
-    [_titleLabel setHidden:NO];
-    [_dateLabel setHidden:NO];
-    [_buttonGroupView setHidden:NO];
-    
-    [UIView beginAnimations:@"button fade in" context:nil];
-    {
-        [UIView setAnimationDuration:0.25];
-        
-        [_titleLabel setAlpha:1];
-        [_dateLabel setAlpha:1];
-        [_buttonGroupView setAlpha:1];
-        
+    static OFPreference *SortPreference = nil;
+    if (SortPreference == nil) {
+        OFEnumNameTable *enumeration = [[OFEnumNameTable alloc] initWithDefaultEnumValue:OUIDocumentPickerItemSortByDate];
+        [enumeration setName:@"name" forEnumValue:OUIDocumentPickerItemSortByName];
+        [enumeration setName:@"date" forEnumValue:OUIDocumentPickerItemSortByDate];
+        SortPreference = [[OFPreference preferenceForKey:@"OUIDocumentPickerSortKey" enumeration:enumeration] retain];
+        [enumeration release];
     }
-    [UIView commitAnimations];
+    return SortPreference;
 }
 
-- (void)textFieldDidEndEditing:(UITextField *)textField;
+- (void)updateSort;
 {
-    NSString *newName = [textField text];
-    if (!newName || [newName length] == 0) {
-        _editingTitle = NO;
-        _previewScrollView.disableRotationDisplay = NO;
-        
-        OUIDocumentPickerView *pickerView = (OUIDocumentPickerView *)self.view;
-        [pickerView setBottomToolbarHidden:NO animated:YES];
-        
-        _previewScrollView.disableScroll = NO;
-        
-        return;
+    OUIDocumentPickerItemSort sort = [[[self class] sortPreference] enumeratedValue];
+    _mainScrollView.itemSort = sort;
+    _groupScrollView.itemSort = sort;
+}
+
+- (NSString *)mainToolbarTitle;
+{
+    if ([_nonretained_delegate respondsToSelector:@selector(documentPickerMainToolbarTitle:)]) {
+        return [_nonretained_delegate documentPickerMainToolbarTitle:self];
     }
     
-    OUIDocumentProxy *currentProxy = [self proxyWithURL:_editingProxyURL];
-    NSURL *currentURL = [[_editingProxyURL copy] autorelease];
+    return NSLocalizedStringWithDefaultValue(@"Documents <main toolbar title>", @"OmniUI", OMNI_BUNDLE, @"Documents", @"Main toolbar title");
+}
+
+- (void)updateTitle;
+{
+    OBFinishPortingLater("Make sure this gets called as the selection changes, documents are added/removed, whatever.");
     
-    if (![newName isEqualToString:[currentProxy name]]) {
-        NSString *uti = [OFSFileInfo UTIForURL:currentURL];
-        OBASSERT(uti);
-        
-        NSURL *newProxyURL = [self _renameProxy:currentProxy toName:newName type:uti rescanDocuments:NO];
-        
-        if ([[newProxyURL path] isEqualToString:[currentURL path]]) {            
-            NSString *msg = [NSString stringWithFormat:NSLocalizedStringFromTableInBundle(@"Unable to rename document to %@", @"OmniUI", OMNI_BUNDLE, @"error when renaming a document"), newName];                
-            NSError *err = [[NSError alloc] initWithDomain:NSURLErrorDomain code:0 userInfo:[NSDictionary dictionaryWithObjectsAndKeys:msg, NSLocalizedDescriptionKey, msg, NSLocalizedFailureReasonErrorKey, nil]];
-            OUI_PRESENT_ERROR(err);
-            [err release];            
+    NSString *title = [self mainToolbarTitle];
+    
+    // We don't have a selected item right now, but we may want to have some sort of "N of M" display for filtering based on searches. See <bug:///72896> (Need UI mockup for doc picker changes to support searching [global find])
+#if 0
+    OUIDocumentPicker *picker = self.documentPicker;
+    OUIDocumentProxy *proxy = picker.selectedProxy;
+    NSArray *proxies = picker.previewScrollView.sortedProxies;
+    NSUInteger proxyCount = [proxies count];
+    
+    if (proxy != nil && proxyCount > 1) {
+        NSUInteger proxyIndex = [proxies indexOfObjectIdenticalTo:proxy];
+        if (proxyIndex == NSNotFound) {
+            OBASSERT_NOT_REACHED("Missing proxy");
+            proxyIndex = 1; // less terrible.
         }
         
-        [_editingProxyURL release];
-        _editingProxyURL = nil;
-        
-        _editingProxyURL = [newProxyURL retain];
+        NSString *counterFormat = NSLocalizedStringWithDefaultValue(@"%d of %d <document index", @"OmniUI", OMNI_BUNDLE, @"%@ (%d of %d)", @"format for showing the main title, document index and document count, in that order");
+        title = [NSString stringWithFormat:counterFormat, title, proxyIndex + 1, proxyCount];
     }
+#endif
     
-    _editingTitle = NO;
-    _previewScrollView.disableRotationDisplay = NO;
-    
-    OUIDocumentPickerView *pickerView = (OUIDocumentPickerView *)self.view;
-    [pickerView setBottomToolbarHidden:NO animated:YES];
-    _previewScrollView.disableScroll = NO;
-    
-    if (!_keyboardIsShowing) {
-        [_titleEditingField setHidden:YES];
-        
-        [self showButtonsAfterEditing];
-        
-        [self.view.layer recursivelyRemoveAnimationForKey:PositionAdjustAnimation];
-        self.previewScrollView.disableLayout = NO;
-        
-        if (_editingProxyURL) {
-            [self rescanDocumentsScrollingToURL:_editingProxyURL animated:NO];
-            
-            [_editingProxyURL release];
-            _editingProxyURL = nil;
-        }
-    }
-}
-
-- (BOOL)textField:(UITextField *)textField shouldChangeCharactersInRange:(NSRange)range replacementString:(NSString *)string;
-{
-    // <bug://bugs/61021>
-    NSRange r = [string rangeOfString:@"/"];
-    if (r.location != NSNotFound) {
-        return NO;
-    }
-    
-    return YES;
-}
-
-- (BOOL)textFieldShouldClear:(UITextField *)textField;
-{
-    if (!_keyboardIsShowing) {
-        [textField becomeFirstResponder];
-        [textField setDelegate:self];  // seems to be a hardware keyboard bug where clearing the text clears the delegate if no keyboard is showing
-    }
-    return YES;
-}
-
-- (BOOL)textFieldShouldReturn:(UITextField *)textField;
-{
-    if (_editingTitle)
-        [_titleEditingField resignFirstResponder];
-    
-    return YES;
-}
-
-#pragma mark -
-#pragma mark keyboard
-@synthesize editingTitle = _editingTitle;
-- (void)keyboardWillShow:(NSNotification *)notification;
-{
-    _keyboardIsShowing = YES;
-    
-    if (!_editingTitle)
-        return;
-    
-    [self _animateWithKeyboard:notification showing:YES];
-}
-
-- (void)keyboardDidShow:(NSNotification *)notification;
-{
-}
-
-- (void)keyboardWillHide:(NSNotification *)notification;
-{
-    if (!_editingTitle)
-        return;
-    
-    [self _animateWithKeyboard:notification showing:NO];
-}
-
-- (void)keyboardDidHide:(NSNotification *)notification;
-{
-    _keyboardIsShowing = NO;
-
-    if (_editingTitle)     // Keyboard hid, but editing is still going on
-        return;
-    
-    [_titleEditingField setHidden:YES];
-    
-    [self showButtonsAfterEditing];
-    
-    [self.view.layer recursivelyRemoveAnimationForKey:PositionAdjustAnimation];
-    self.previewScrollView.disableLayout = NO;
-        
-    if (_editingProxyURL) {
-        [self rescanDocumentsScrollingToURL:_editingProxyURL animated:NO];
-        [_editingProxyURL release];
-        _editingProxyURL = nil;
-    }
+    // Had to add a space after the title to make padding between the title and the image. I tried using UIEdgeInsets on the image, title and content but could not get it to work horizontally. I did, however, get it to work to vertically align the image.
+    [_appTitleToolbarButton setTitle:[title stringByAppendingString:@" "] forState:UIControlStateNormal];
+    _appTitleToolbarButton.titleLabel.font = [UIFont boldSystemFontOfSize:17.0];
+    [_appTitleToolbarButton sizeToFit];
+    [_appTitleToolbarButton layoutIfNeeded];
 }
 
 #pragma mark -
@@ -1715,54 +1368,61 @@ static id _commonInit(OUIDocumentPicker *self)
 - (void)viewDidLoad;
 {
     [super viewDidLoad];
-        
-    // We want the scroll view of documents to be touchable over the whole screen, but not have the previews overlap the title and stuff.
-    CGRect viewBounds = self.view.bounds;
-    _previewScrollView.bottomGap = CGRectGetHeight(viewBounds) - CGRectGetHeight(_previewScrollView.frame);
-    _previewScrollView.frame = viewBounds;
     
-    [self _updateSort];
+    _toolbar.items = self.toolbarItems;
 
-    if (_directory) {
-        [self _setupProxiesBinding];
-        [self _loadProxies];
-    }
+    BOOL landscape = UIInterfaceOrientationIsLandscape(self.interfaceOrientation);
+    
+    CGRect viewBounds = self.view.bounds;
+    _mainScrollView.frame = viewBounds;
+    _mainScrollView.landscape = landscape;
+    
+    _groupScrollView.landscape = landscape;
+    [_groupScrollView removeFromSuperview]; // We'll put it back when opening a group
+    
+    [self updateSort];
+    
+    [self _setupTopItemsBinding];
+    
+    _startDragRecognizer = [[OUIDragGestureRecognizer alloc] initWithTarget:self action:@selector(_startDragRecognizer:)];
+    _startDragRecognizer.delegate = self;
+    _startDragRecognizer.holdDuration = 0.5; // taken from UILongPressGestureRecognizer.h
+    _startDragRecognizer.requiresHoldToComplete = YES;
+
+    [_mainScrollView addGestureRecognizer:_startDragRecognizer];
+    [_groupScrollView addGestureRecognizer:_startDragRecognizer];
 }
 
 - (void)viewDidUnload;
 {
     [super viewDidUnload];
     
-    [_previewScrollView release];
-    _previewScrollView = nil;
+    OBASSERT(_dragSession == nil); // No idea how we'd get here, but just in case
+    [_dragSession release];
+    _dragSession = nil;
     
-    [_titleLabel release];
-    _titleLabel = nil;
+    _startDragRecognizer.delegate = nil;
+    [_startDragRecognizer release];
+    _startDragRecognizer = nil;
+    
+    [_mainScrollView release];
+    _mainScrollView = nil;
+    
+    [_topItemsBinding invalidate];
+    [_topItemsBinding release];
+    _topItemsBinding = nil;
+    [_topItems release];
+    _topItems = nil;
+    
+    [_groupScrollView release];
+    _groupScrollView = nil;
+    
+    [_openGroupItemsBinding invalidate];
+    [_openGroupItemsBinding release];
+    _openGroupItemsBinding = nil;
 
-    [_dateLabel release];
-    _dateLabel = nil;
-    
-    [_buttonGroupView release];
-    _buttonGroupView = nil;
-    
-    [_favoriteButton release];
-    _favoriteButton = nil;
-    
-    [_exportButton release];
-    _exportButton = nil;
-    
-    [_addDocumentButton release];
-    _addDocumentButton = nil;
-    
-    [_deleteButton release];
-    _deleteButton = nil;
-    
-    [_proxiesBinding invalidate];
-    [_proxiesBinding release];
-    _proxiesBinding = nil;
-
-    [_proxies release];
-    _proxies = nil;
+    [_openGroupItems release];
+    _openGroupItems = nil;
 }
 
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation;
@@ -1774,70 +1434,113 @@ static id _commonInit(OUIDocumentPicker *self)
 {
     [super willRotateToInterfaceOrientation:toInterfaceOrientation duration:duration];
     
-    if (NSClassFromString(@"UIPrintInteractionController") != nil)
-        [[UIPrintInteractionController sharedPrintController] dismissAnimated:NO];
+    [[UIPrintInteractionController sharedPrintController] dismissAnimated:NO];
     
-    _trackPickerView = NO;
-    [_previewScrollView willRotate];
+    BOOL landscape = UIInterfaceOrientationIsLandscape(toInterfaceOrientation);
     
-    if (_nonretainedActionSheet) {
-        OBASSERT([_nonretainedActionSheet isKindOfClass:[UIActionSheet class]]);
-        [_nonretainedActionSheet dismissWithClickedButtonIndex:-1 animated:NO];
-        _nonretainedActionSheet = nil;
+    [_mainScrollView willRotate];
+    _mainScrollView.landscape = landscape;
+
+    if (_groupScrollView.superview) {
+        [_groupScrollView willRotate];
+        _groupScrollView.landscape = landscape;
     }
 }
 
 - (void)didRotateFromInterfaceOrientation:(UIInterfaceOrientation)fromInterfaceOrientation;
 {
-    [_previewScrollView snapToProxy:self.selectedProxy animated:NO];
-    [_previewScrollView didRotate];
-    _trackPickerView = YES;
+    [_mainScrollView didRotate];
+    
+    if (_groupScrollView.superview)
+        [_groupScrollView didRotate];
 
     [super didRotateFromInterfaceOrientation:fromInterfaceOrientation];
 }
 
-- (void)_applicationDidEnterBackground;
+- (void)willMoveToParentViewController:(UIViewController *)parent;
 {
-    // Reset openInMapCache incase someone adds or delets an app.
-    [self.openInMapCache removeAllObjects];
+    [super willMoveToParentViewController:parent];
+    
+    // Start out with the right grid size. Also, the device might be rotated while we a document was open and we weren't in the view controller tree
+    if (parent) {
+        BOOL landscape = UIInterfaceOrientationIsLandscape(self.interfaceOrientation);
+
+        _mainScrollView.landscape = landscape;
+        _groupScrollView.landscape = landscape;
+        
+        // Might have been disabled while we went off screen (like when making a new document)
+        if (_ignoreDocumentsDirectoryUpdates == 0) {
+            [self _propagateItems:_topItems toScrollView:_mainScrollView];
+            if (_openGroupItemsBinding)
+                [self _propagateItems:_openGroupItems toScrollView:_groupScrollView];
+            [self _updateToolbarItemsEnabledness];
+        }  
+    }
 }
 
-- (void)viewWillAppear:(BOOL)animated {
+- (void)didMoveToParentViewController:(UIViewController *)parent;
+{
+    [super didMoveToParentViewController:parent];
+    
+    if (parent) {
+        // If the user starts closing a document and then rotates the device before the close finishes, we can get send {will,did}MoveToParentViewController: where the "will" has one orientation and the "did" has another, but we are not sent -willRotateToInterfaceOrientation:duration:, but we *are* sent the "didRotate...".
+        BOOL landscape = UIInterfaceOrientationIsLandscape(self.interfaceOrientation);
+        
+        _mainScrollView.landscape = landscape;
+        _groupScrollView.landscape = landscape;
+    }
+}
+
+- (void)viewWillAppear:(BOOL)animated;
+{
     [super viewWillAppear:animated];
+
     [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(_applicationDidEnterBackground)
+                                             selector:@selector(_applicationWillEnterForeground:)
+                                                 name:UIApplicationWillEnterForegroundNotification
+                                               object:nil];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(_applicationDidEnterBackground:)
                                                  name:UIApplicationDidEnterBackgroundNotification
                                                object:nil];
 }
-- (void)viewWillDisappear:(BOOL)animated {
+
+- (void)viewWillDisappear:(BOOL)animated;
+{
     [super viewWillDisappear:animated];
-    [[NSNotificationCenter defaultCenter] removeObserver:self 
-                                                    name:UIApplicationDidEnterBackgroundNotification 
-                                                  object:nil];
+    
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationWillEnterForegroundNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIApplicationDidEnterBackgroundNotification object:nil];
 }
 
-#pragma mark -
-#pragma mark UIActionSheetDelegate
-
-- (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex;
+- (void)setEditing:(BOOL)editing animated:(BOOL)animated;
 {
-    // -1 means cancel (clicked out) if you don't have a cancel item
-    if (buttonIndex >= 0 && buttonIndex != [actionSheet cancelButtonIndex]) {
-        NSInvocation *action = [_actionSheetInvocations objectAtIndex:buttonIndex];
-        if ([[action methodSignature] numberOfArguments] > 2)
-            [action setArgument:&self atIndex:2];
-        [action invoke];
+    [super setEditing:editing animated:animated];
+    
+    // Dismiss any Popovers or Action Sheets.
+    [[OUIAppController controller] dismissActionSheetAndPopover:YES];
+
+    // If you Edit in an open group, the items in the background scroll view shouldn't wiggle.
+    OBFinishPortingLater("If you drag an item out of an Edit-ing group scroll view, then the main scroll view *should* start the wiggle animation");
+    [self.activeScrollView setEditing:editing animated:animated];
+    
+    if (!editing) {
+        [self clearSelection:NO];
     }
     
-    // cleanup done in dismiss below.
+    [self _updateToolbarItems];
 }
 
-- (void)actionSheet:(UIActionSheet *)actionSheet didDismissWithButtonIndex:(NSInteger)buttonIndex;  // after animation
+- (void)setToolbarItems:(NSArray *)toolbarItems animated:(BOOL)animated;
 {
-    [_actionSheetInvocations release];
-    _actionSheetInvocations = nil;
+    // This doesn't update our UIToolbar, but OUIDocumentRenameViewController will use it to go back to the toolbar items we should be using.
+    [super setToolbarItems:toolbarItems animated:animated];
     
-    _nonretainedActionSheet = nil;
+    // The remain view controller overrides our toolbar's items. Might need a more general check for "has some other view controller taken over the toolbar" (or maybe such controller should have their own toolbar).
+    if (_renameViewController == nil) {
+        [_toolbar setItems:toolbarItems animated:animated];
+    }
 }
 
 #pragma mark -
@@ -1845,130 +1548,41 @@ static id _commonInit(OUIDocumentPicker *self)
 
 - (void)mailComposeController:(MFMailComposeViewController *)controller didFinishWithResult:(MFMailComposeResult)result error:(NSError *)error;
 {
+    [self clearSelection:YES];
+    
     [[[OUIAppController controller] topViewController] dismissModalViewControllerAnimated:YES];
 }
 
 #pragma mark -
-#pragma mark OUIDocumentPickerScrollViewDelegate
+#pragma mark UIViewController (OUIMainViewControllerExtensions)
 
-- (void)documentPickerView:(OUIDocumentPickerScrollView *)pickerView didSelectProxy:(OUIDocumentProxy *)proxy;
+- (UIToolbar *)toolbarForMainViewController;
 {
-    if (_trackPickerView)
-        [self setSelectedProxy:proxy scrolling:NO animated:NO];
-}
-
-#pragma mark -
-#pragma mark UIViewController (OUIToolbarViewControllerExtensions)
-
-- (UIView *)prepareToResignInnerToolbarControllerAndReturnParentViewForActivityIndicator:(OUIToolbarViewController *)toolbarViewController;
-{
-    [self view];
-    _isInnerController = NO;
-    
-    _addPushAndFadeAnimations(self, YES/*fade*/, AnimateTitleAndButtons);
-    
-//    [self.view.window layoutIfNeeded];
-//    [CATransaction flush];
-    
-    return _titleLabel;
-}
-
-- (void)willResignInnerToolbarController:(OUIToolbarViewController *)toolbarViewController animated:(BOOL)animated;
-{
-    _trackPickerView = NO;
-
-    if (animated) {
-        _addPushAndFadeAnimations(self, YES/*fade*/, AnimateNeighborProxies);
-
-        // Tell our proxy list  to stop doing layout while we are animating.
-        self.previewScrollView.disableLayout = YES;
-        PICKER_DEBUG(@"LAYOUT DISABLED");
-    }
-
-    [super willResignInnerToolbarController:toolbarViewController animated:animated];
-}
-
-- (void)didResignInnerToolbarController:(OUIToolbarViewController *)toolbarViewController;
-{
-    [super didResignInnerToolbarController:toolbarViewController];
-    
-    // OK for us to do layout again.
-    PICKER_DEBUG(@"LAYOUT ENABLED");
-    self.previewScrollView.disableLayout = NO;
-    
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillShowNotification object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardDidShowNotification object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardWillHideNotification object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIKeyboardDidHideNotification object:nil];    
-
-    [[NSNotificationCenter defaultCenter] removeObserver:_applicationDidBecomeActiveObserver];
-    _applicationDidBecomeActiveObserver = nil;
-}
-
-- (void)willBecomeInnerToolbarController:(OUIToolbarViewController *)toolbarViewController animated:(BOOL)animated;
-{
-    // Necessary if the device has been rotated while we weren't on screen.
-    [_previewScrollView snapToProxy:self.selectedProxy animated:NO];
-    [self.view layoutIfNeeded];
-
-    // The set of proxies might change so we can't just do right left here for removing old animations.
-    [self.view.layer recursivelyRemoveAnimationForKey:PositionAdjustAnimation];
-    
-    if (animated) {
-        _addPushAndFadeAnimations(self, NO/*fade*/, AnimateTitleAndButtons);
-        _addPushAndFadeAnimations(self, NO/*fade*/, AnimateNeighborProxies);
-
-        // Tell our proxy list  to stop doing layout while we are animating.
-        self.previewScrollView.disableLayout = YES;
-        PICKER_DEBUG(@"LAYOUT DISABLED");
-    }
-    
-    _dateLabel.text = [self.previewScrollView.proxyClosestToCenter dateString]; // in case the document has been modified 
-    
-    [super willBecomeInnerToolbarController:toolbarViewController animated:animated];
-    
-    // the buttons can get hidden offscreen when switching from the background while viewing a document
-    // would be better if this were only called after activating the app
-    [self.view.layer recursivelyRemoveAnimationForKey:@"positionAdjust"];
-
-    _trackPickerView = YES;
-}
-
-- (void)didBecomeInnerToolbarController:(OUIToolbarViewController *)toolbarViewController;
-{
-    [super didBecomeInnerToolbarController:toolbarViewController];
-    
-    // OK for us to do layout again.
-    PICKER_DEBUG(@"LAYOUT ENABLED");
-    self.previewScrollView.disableLayout = NO;
-
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardDidShow:) name:UIKeyboardDidShowNotification object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardDidHide:) name:UIKeyboardDidHideNotification object:nil];
-    
-    // If a user drags a document into iTunes while we're running, we get this notification after the document syncs over. Fixes <bug:///72626>.
-    _applicationDidBecomeActiveObserver = [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) { 
-        [self rescanDocuments]; 
-    }];
-
-    _isInnerController = YES;
-    
-    if ([_previewScrollView proxySort] == OUIDocumentProxySortByDate) {
-        // returning to document picker after document has been modified and sorting by date can often result in the previews not loading correctly. see <bug://bugs/67348> (modifying a document with By Date sorting on does not reshuffle the documents when returning to document picker)
-        OUIDocumentProxy *centerProxy = _previewScrollView.proxyClosestToCenter;
-        if (!centerProxy.isLoadingPreview)
-            [centerProxy refreshDateAndPreview];
-        OUIDocumentProxy *rightProxy = [_previewScrollView proxyToRightOfProxy:centerProxy]; // since, 'centerProxy' is likely at the beginning of the picker
-        if (!rightProxy.isLoadingPreview)
-            [rightProxy refreshDateAndPreview];
-    }
-    
+    if (!_toolbar)
+        [self view]; // it's in our xib.
+    OBASSERT(_toolbar);
+    return _toolbar;
 }
 
 - (BOOL)isEditingViewController;
 {
     return NO;
+}
+
+#pragma mark -
+#pragma mark UIGestureRecognizerDelegate
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer;
+{
+    if (gestureRecognizer == _startDragRecognizer) {
+        if (_startDragRecognizer.wasATap)
+            return NO;
+
+        // Only start editing and float up a preview if we hit a file preview
+        return ([self.activeScrollView fileItemViewHitInPreviewAreaByRecognizer:_startDragRecognizer] != nil);
+    }
+    
+    return YES;
 }
 
 #pragma mark -
@@ -2020,9 +1634,9 @@ static id _commonInit(OUIDocumentPicker *self)
     return 2;
 }
 
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    
-    static NSString *CellIdentifier = @"FilterCellIdentifier";
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath;
+{
+    static NSString * const CellIdentifier = @"FilterCellIdentifier";
     
     // Dequeue or create a cell of the appropriate type.
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:CellIdentifier];
@@ -2030,15 +1644,15 @@ static id _commonInit(OUIDocumentPicker *self)
         cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:CellIdentifier] autorelease];
     
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    cell.textLabel.text = (indexPath.row == OUIDocumentProxySortByName) ? NSLocalizedStringFromTableInBundle(@"Sort by title", @"OmniUI", OMNI_BUNDLE, @"sort by title") : NSLocalizedStringFromTableInBundle(@"Sort by date", @"OmniUI", OMNI_BUNDLE, @"sort by date");
-    cell.imageView.image = (indexPath.row == OUIDocumentProxySortByName) ? [UIImage imageNamed:@"OUIDocumentSortByName.png"] : [UIImage imageNamed:@"OUIDocumentSortByDate.png"];
+    cell.textLabel.text = (indexPath.row == OUIDocumentPickerItemSortByName) ? NSLocalizedStringFromTableInBundle(@"Sort by title", @"OmniUI", OMNI_BUNDLE, @"sort by title") : NSLocalizedStringFromTableInBundle(@"Sort by date", @"OmniUI", OMNI_BUNDLE, @"sort by date");
+    cell.imageView.image = (indexPath.row == OUIDocumentPickerItemSortByName) ? [UIImage imageNamed:@"OUIDocumentSortByName.png"] : [UIImage imageNamed:@"OUIDocumentSortByDate.png"];
     
     return cell;
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    OUIDocumentProxySort sortPref = [[[self class] _sortPreference] enumeratedValue];
+    OUIDocumentPickerItemSort sortPref = [[[self class] sortPreference] enumeratedValue];
     if ((indexPath.row == 0) == (sortPref == 0))  // or indexPath.row == sortPref
         cell.accessoryType = UITableViewCellAccessoryCheckmark;
     else
@@ -2046,15 +1660,65 @@ static id _commonInit(OUIDocumentPicker *self)
 }
 
 #pragma mark -
+#pragma mark OUIDocumentPickerScrollView delegate
+
+- (void)documentPickerScrollView:(OUIDocumentPickerScrollView *)scrollView itemViewTapped:(OUIDocumentPickerItemView *)itemView inArea:(OUIDocumentPickerItemViewTapArea)area;
+{
+    OBPRECONDITION(_renameViewController == nil); // Can't be renaming right now, so need to try to stop
+        
+    OBFinishPortingLater("Use the shielding view to avoid having to explicitly end editing here"); // also, if we zoom in on a preview to rename like iWork this may change
+    
+    if ([itemView isKindOfClass:[OUIDocumentPickerFileItemView class]]) {
+        OUIDocumentPickerFileItemView *fileItemView = (OUIDocumentPickerFileItemView *)itemView;
+        OFSDocumentStoreFileItem *fileItem = (OFSDocumentStoreFileItem *)itemView.item;
+        OBASSERT([fileItem isKindOfClass:[OFSDocumentStoreFileItem class]]);
+        
+        if (area == OUIDocumentPickerItemViewTapAreaLabelAndDetails) {
+            // Start editing the name of this document.
+            [self _startRenamingFileItem:fileItem];
+        } else {
+            OBASSERT(area == OUIDocumentPickerItemViewTapAreaPreview);
+            if ([self isEditing]) {
+                OBFinishPortingLater("Update the title to say '5 Outlines Selected', or whatever");
+                fileItem.selected = !fileItem.selected;
+                
+                // In addition to the border, iWork bounces the file item view down slightly on a tap (selecting or deselecting).
+                [fileItemView bounceDown];
+                
+                [self _updateToolbarItemsEnabledness];
+            } else {
+                if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:openTappedFileItem:)])
+                    [_nonretained_delegate documentPicker:self openTappedFileItem:fileItem];
+            }
+        }
+    } else if ([itemView isKindOfClass:[OUIDocumentPickerGroupItemView class]]) {
+        OFSDocumentStoreGroupItem *groupItem = (OFSDocumentStoreGroupItem *)itemView.item;
+        OBASSERT([groupItem isKindOfClass:[OFSDocumentStoreGroupItem class]]);
+        [self _openGroup:groupItem andEditTitle:(area == OUIDocumentPickerItemViewTapAreaLabelAndDetails)];
+    } else {
+        OBASSERT_NOT_REACHED("Unknown item view class");
+    }
+}
+
+#pragma mark -
+#pragma mark - OUIDocumentPickerDragSession callbacks
+
+- (void)dragSessionTerminated;
+{
+    [_dragSession release];
+    _dragSession = nil;
+}
+
+#pragma mark -
 #pragma mark Table view delegate
 
 - (void)tableView:(UITableView *)aTableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath;
 {
-    OFPreference *sortPreference = [[self class] _sortPreference];
+    OFPreference *sortPreference = [[self class] sortPreference];
     [sortPreference setEnumeratedValue:indexPath.row];
-    OUIDocumentProxy *proxy = [self selectedProxy];
-    [self _updateSort];
-    [self scrollToProxy:proxy animated:NO];        
+
+    [self updateSort];
+    [self scrollToTopAnimated:NO];
     
     UITableViewCell *cell = [aTableView cellForRowAtIndexPath:indexPath];
     cell.accessoryType = UITableViewCellAccessoryCheckmark;
@@ -2068,139 +1732,173 @@ static id _commonInit(OUIDocumentPicker *self)
 }
 
 #pragma mark -
+#pragma mark NSFilePresenter
+
+// We become the file presentor for our document store's directory (which we assume won't change...)
+// Under iOS 5, when iTunes fiddles with your files, your app no longer gets deactivated and reactivated. Instead, the operations seem to happen via NSFileCoordinator.
+// Sadly, we don't get subitem changes just -presentedItemDidChange, no matter what set of NSFilePresenter methods we implement (at least as of beta 7).
+
+- (NSURL *)presentedItemURL;
+{
+    OBPRECONDITION(_documentStore);
+    NSURL *url = _documentStore.directoryURL;
+    OBASSERT(url);
+    return url;
+}
+
+- (NSOperationQueue *)presentedItemOperationQueue;
+{
+    return _filePresenterQueue;
+}
+
+- (void)presentedItemDidChange;
+{
+    [[NSOperationQueue mainQueue] addOperationWithBlock:^{
+        OBPRECONDITION([NSThread isMainThread]);
+        
+        if ([self parentViewController] == nil)
+            return; // We'll rescan when the currently open document closes
+        
+        if (_ignoreDocumentsDirectoryUpdates > 0)
+            return; // Some other operation is going on that is provoking this change and that wants to do the rescan manually.
+        
+        // Note: this will get called when the app is returned to the foreground, if coordinated writes were made while it was backgrounded.
+        [self rescanDocuments];
+    }];
+}
+
+#pragma mark -
+#pragma mark Internal
+
+- (OUIMainViewController *)mainViewController;
+{
+    OUIMainViewController *vc = (OUIMainViewController *)self.parentViewController;
+    OBASSERT([vc isKindOfClass:[OUIMainViewController class]]); // Don't call this method when we aren't currently its child (and warn if we get a different parent).
+    return vc;
+}
+
+- (void)_previewsUpdatedForFileItem:(OFSDocumentStoreFileItem *)fileItem;
+{
+    [_mainScrollView previewsUpdatedForFileItem:fileItem];
+    [_groupScrollView previewsUpdatedForFileItem:fileItem];
+}
+
+#pragma mark -
 #pragma mark Private
 
-- (void)_loadProxies;
+- (void)_updateToolbarItems;
 {
-    // Need to know both where to scan and what class of proxies to make.
-    // Also, if we are still loading from nib, the main app controller might be in the same nib as us and the UIApp might not have a delegate (for +[OUIAppController controller] below).
-    if (!_directory || !_nonretained_delegate || _loadingFromNib)
-        return;
+    OBPRECONDITION(_documentStore);
     
-    PICKER_DEBUG(@"Scanning %@", _directory);
+    OUISingleDocumentAppController *controller = [OUISingleDocumentAppController controller];
+    BOOL editing = self.isEditing;
     
-    // TODO: Allow a scan to happen with search criteria (favorites/search).
-    // TODO: Need to filter out things that aren't documents. Should probably have a list of file types (UTIs or extensions if that doesn't work).
-    // TODO: Allow setting whether we recurse into Documents/Shared? Or just do it?
-
-    // Build an index of the old groups and the union of all the old proxies
-    NSMutableDictionary *urlToExistingProxy = [NSMutableDictionary dictionary];
-    for (OUIDocumentProxy *proxy in _proxies) {
-        OBASSERT([urlToExistingProxy objectForKey:proxy.url] == nil);
-        [urlToExistingProxy setObject:proxy forKey:proxy.url];
-    }
-    //NSLog(@"urlToExistingProxy = %@", urlToExistingProxy);
+    NSMutableArray *toolbarItems = [NSMutableArray array];
     
-    // Scan the existing documents directory, reusing proxies when possible
-    NSMutableSet *updatedProxies = [NSMutableSet set];
-    {
-        //NSLog(@"today %@", today);
-        //NSLog(@"yesterday %@", yesterday);
+    if (editing) {
+        if (!_exportBarButtonItem) {
+            // We keep pointers to a few toolbar items that we need to update enabledness on.
+            _exportBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage imageNamed:@"OUIDocumentExport.png"] style:UIBarButtonItemStylePlain target:self action:@selector(export:)];
+            _duplicateDocumentBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage imageNamed:@"OUIDocumentDuplicate.png"] style:UIBarButtonItemStylePlain target:self action:@selector(duplicateDocument:)];
+            _deleteBarButtonItem = [[UIBarButtonItem alloc] initWithImage:[UIImage imageNamed:@"OUIDocumentDelete.png"] style:UIBarButtonItemStylePlain target:self action:@selector(deleteDocument:)];
+        }
         
-        NSFileManager *fileManager = [NSFileManager defaultManager];
-        NSMutableArray *scanDirectories = [NSMutableArray arrayWithObject:_directory];
-        while ([scanDirectories count] != 0) {
-            NSString *scanDirectory = [scanDirectories lastObject]; // We're building a set, and it's faster to remove the last object than the first
-            [scanDirectories removeLastObject];
-            
-#if __IPHONE_4_0 <= __IPHONE_OS_VERSION_MAX_ALLOWED
-            NSError *error = nil;
-            NSArray *fileNames = [fileManager contentsOfDirectoryAtPath:scanDirectory error:&error];
-            if (!fileNames)
-                NSLog(@"Unable to scan documents in %@: %@", scanDirectory, [error toPropertyList]);
-#else
-            NSArray *fileNames = [fileManager directoryContentsAtPath:scanDirectory];
-#endif
-            
-            for (NSString *fileName in fileNames) {
-                NSString *uti = [OFSFileInfo UTIForFilename:fileName];
-                NSString *filePath = [scanDirectory stringByAppendingPathComponent:fileName];
-
-                if (![[OUIAppController controller] canViewFileTypeWithIdentifier:uti]) {
-                    if ([fileManager directoryExistsAtPath:filePath traverseLink:YES])
-                        [scanDirectories addObject:filePath];
-                    continue;
-                }
-                
-                NSURL *fileURL = [NSURL fileURLWithPath:filePath];
-                OUIDocumentProxy *proxy = [urlToExistingProxy objectForKey:fileURL];
-                
-                if ([_nonretained_delegate documentPicker:self proxyClassForURL:fileURL]) {  // Graffle will return nil if it no longer is interested in this proxy (e.g. switched to viewing stencils)                    
-                    if (proxy) { 
-                        PICKER_DEBUG(@"Existing proxy: '%@'", filePath);
-                        [urlToExistingProxy removeObjectForKey:fileURL]; // mark this as used
-                        //NSLog(@"  reused proxy %@ for %@", proxy, fileURL);
-                    } else {
-                        PICKER_DEBUG(@"New proxy: '%@'", filePath);
-                        proxy = [self _makeProxyForURL:fileURL];
-                        OBASSERT(proxy);
-                    }
-                    if (proxy)
-                        [updatedProxies addObject:proxy];
-                }
-            }
+        _exportBarButtonItem.enabled = NO;
+        _duplicateDocumentBarButtonItem.enabled = NO;
+        _deleteBarButtonItem.enabled = NO;
+        
+        [toolbarItems addObject:_exportBarButtonItem];
+        [toolbarItems addObject:_duplicateDocumentBarButtonItem];
+        [toolbarItems addObject:_deleteBarButtonItem];
+    } else {
+        if (_documentStore.documentTypeForNewFiles != nil) {
+            UIBarButtonItem *addItem = [[[UIBarButtonItem alloc] initWithImage:[UIImage imageNamed:@"OUIToolbarAddDocument.png"] 
+                                                                         style:UIBarButtonItemStylePlain 
+                                                                        target:controller action:@selector(makeNewDocument:)] autorelease];
+            [toolbarItems addObject:addItem];
+        }
+        
+        if ([[OFPreferenceWrapper sharedPreferenceWrapper] boolForKey:@"OUIImportEnabled"]) {
+            UIBarButtonItem *importItem = [[[UIBarButtonItem alloc] initWithImage:[UIImage imageNamed:@"OUIToolbarButtonImport.png"] 
+                                                                            style:UIBarButtonItemStylePlain 
+                                                                           target:controller action:@selector(showSyncMenu:)] autorelease];
+            [toolbarItems addObject:importItem];
         }
     }
     
-    // Any proxies we had before that we didn't re-use have gone missing (deleted or filtered out) and we should remove them.
-    if ([self isViewLoaded]) {
-        NSArray *proxiesToRemove = [urlToExistingProxy allValues];
-        for (OUIDocumentProxy *proxy in proxiesToRemove)
-            [proxy invalidate];
-    }
+    [toolbarItems addObject:[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease]];
     
-    BOOL proxiesChanged = OFNOTEQUAL(_proxies, updatedProxies);
-    if (proxiesChanged) {
-        [self willChangeValueForKey:ProxiesBinding];
-        [_proxies release];
-        _proxies = [[NSSet alloc] initWithSet:updatedProxies];
-        [self didChangeValueForKey:ProxiesBinding];
-
+    if (!_appTitleToolbarItem) {
+        OBASSERT(_appTitleToolbarButton == nil);
+        
+        _appTitleToolbarButton = [[OUIToolbarTitleButton buttonWithType:UIButtonTypeCustom] retain];
+        UIImage *disclosureImage = [UIImage imageNamed:@"OUIToolbarTitleDisclosureButton.png"];
+        OBASSERT(disclosureImage != nil);
+        [_appTitleToolbarButton setImage:disclosureImage forState:UIControlStateNormal];
+        _appTitleToolbarButton.imageEdgeInsets = (UIEdgeInsets){
+            .top = 3.0,
+            .left = 0.0,
+            .bottom = 0.0,
+            .right = 0.0
+        };
+        
+        _appTitleToolbarButton.adjustsImageWhenHighlighted = NO;
+        [_appTitleToolbarButton addTarget:self action:@selector(filterAction:) forControlEvents:UIControlEventTouchUpInside];
+        
+        [self updateTitle];
+        
+        _appTitleToolbarItem = [[UIBarButtonItem alloc] initWithCustomView:_appTitleToolbarButton];
     }
-
-    if ([self isViewLoaded])
-        [self _setupProxiesBinding];
+    [toolbarItems addObject:_appTitleToolbarItem];
     
-    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:scannedProxies:)])
-        [_nonretained_delegate documentPicker:self scannedProxies:_proxies];
+    [toolbarItems addObject:[[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:NULL] autorelease]];
+    
+    [toolbarItems addObject:controller.appMenuBarItem];
+    [toolbarItems addObject:self.editButtonItem];
+    
+    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:makeToolbarItems:)])
+        [_nonretained_delegate documentPicker:self makeToolbarItems:toolbarItems];
+    
+    [self setToolbarItems:toolbarItems];
 }
 
-- (OUIDocumentProxy *)_makeProxyForURL:(NSURL *)fileURL;
+- (void)_updateToolbarItemsEnabledness;
 {
-    // This assumes that the choice of proxy class is consistent for each URL (since we will reuse proxies).  Could double-check in this loop that the existing proxy has the right class if we ever want this to be dynamic.
-    Class proxyClass = [_nonretained_delegate documentPicker:self proxyClassForURL:fileURL];
-    if (!proxyClass) {
-        // We have a UTI for this, but the delegate doesn't want it to show up in the listing (OmniGraffle templates, for example).
-        return nil;
+    if (self.isEditing) {
+        NSUInteger count = [self selectedFileItemCount];
+        if (count == 0) {
+            _exportBarButtonItem.enabled = NO;
+            _duplicateDocumentBarButtonItem.enabled = NO;
+            _deleteBarButtonItem.enabled = NO;
+        }
+        else if (count == 1) {
+            _exportBarButtonItem.enabled = YES;
+            _duplicateDocumentBarButtonItem.enabled = YES;
+            _deleteBarButtonItem.enabled = YES;
+        }
+        else if (count > 1) {
+            _exportBarButtonItem.enabled = NO;
+            _duplicateDocumentBarButtonItem.enabled = YES;
+            _deleteBarButtonItem.enabled = YES;
+        }
     }
-    OBASSERT(OBClassIsSubclassOfClass(proxyClass, [OUIDocumentProxy class]));
-    
-    OUIDocumentProxy *proxy = [[[proxyClass alloc] initWithURL:fileURL] autorelease];
-    proxy.target = self;
-    proxy.action = @selector(_documentProxyTapped:);
-    //NSLog(@"  made new proxy %@ for %@", proxy, fileURL);
-    return proxy;
 }
 
-- (void)_setupProxiesBinding;
+- (void)_setupTopItemsBinding;
 {
-    if (_proxiesBinding && [_proxiesBinding destinationPoint].object == _previewScrollView)
+    OBPRECONDITION(_documentStore);
+    
+    if (_topItemsBinding)
         return;
+        
+    // We might want to bind _documentStore.fileItems to us and then mirror that property to the scroll view, or force feed it. This would allow us to stage animations or whatnot.
+    // NSMetadataQuery is going to send us unsolicited updates (incoming iCloud sync while we are just sitting idle in the picker), so we need to be able to handle these to some extent.
+    [_topItemsBinding invalidate];
+    [_topItemsBinding release];
     
-    _proxiesBinding = [[OFSetBinding alloc] initWithSourcePoint:OFBindingPointMake(self, ProxiesBinding)
-                                               destinationPoint:OFBindingPointMake(_previewScrollView, OUIDocumentPickerScrollViewProxiesBinding)];
-    [_proxiesBinding propagateCurrentValue];
-}
-
-- (void)_documentProxyTapped:(OUIDocumentProxy *)proxy;
-{
-    // Tapping the selected proxy opens it or commits title edit. Otherwise, we want to scroll it into view.
-    if (_titleEditingField && !_titleEditingField.hidden)
-        [_titleEditingField resignFirstResponder];
-    else if (proxy == self.selectedProxy)
-        [_proxyTappedTarget performSelector:_proxyTappedAction withObject:proxy];
-    else
-        self.selectedProxy = proxy;
+    _topItemsBinding = [[OFSetBinding alloc] initWithSourcePoint:OFBindingPointMake(_documentStore, OFSDocumentStoreTopLevelItemsBinding)
+                                                destinationPoint:OFBindingPointMake(self, TopItemsBinding)];
+    [_topItemsBinding propagateCurrentValue];
 }
 
 - (void)_sendEmailWithSubject:(NSString *)subject messageBody:(NSString *)messageBody isHTML:(BOOL)isHTML attachmentName:(NSString *)attachmentFileName data:(NSData *)attachmentData fileType:(NSString *)fileType;
@@ -2223,304 +1921,38 @@ static id _commonInit(OUIDocumentPicker *self)
     [controller autorelease];
 }
 
-typedef struct {
-    OUIDocumentProxy *deleteProxy;
-    NSURL *nextProxyURL;
-} DeleteProxyContext;
-
-- (void)_deleteWithoutConfirmation;
+- (void)_deleteWithoutConfirmation:(NSSet *)fileItemsToDelete;
 {
-    NSError *error = nil;
-    OUIDocumentProxy *deleteProxy = self.selectedProxy;
-    OUIDocumentProxy *nextProxy = [_previewScrollView proxyToRightOfProxy:deleteProxy];
-    if (nextProxy == nil)
-        nextProxy = [_previewScrollView proxyToLeftOfProxy:deleteProxy];
-    if (![self deleteDocumentWithoutPrompt:deleteProxy error:&error]) {
-        OUI_PRESENT_ERROR(error);
-        return;
+    NSMutableArray *errors = [NSMutableArray array];
+    for (OFSDocumentStoreFileItem *fileItem in fileItemsToDelete) {
+        [_documentStore deleteItem:fileItem completionHandler:^(NSError *errorOrNil) {
+            if (errorOrNil)
+                [errors addObject:errorOrNil];
+        }];
     }
     
-    DeleteProxyContext *ctx = calloc(1, sizeof(*ctx));
-    ctx->deleteProxy = [deleteProxy retain];
-    ctx->nextProxyURL = [nextProxy.url retain];
-    
-    [UIView beginAnimations:@"deleting document" context:ctx];
-    [UIView setAnimationDuration:0.3];
-    [UIView setAnimationDelegate:self];
-    [UIView setAnimationCurve:UIViewAnimationCurveEaseIn];
-    [UIView setAnimationDidStopSelector:@selector(_deleteDocumentAnimationDidStop:finished:context:)];
-    {
-        deleteProxy.view.alpha = 0;
-
-        CGRect frame = deleteProxy.view.frame;
-        frame.origin.y += frame.size.height;
-        deleteProxy.view.frame = frame;
-    }
-    
-    [UIView commitAnimations];
+    // Wait for the deletions to finish and possibly emit errors. Since the action queue is serial, we just enqueue another action, and that then enqueues an action on the main queue.
+    [_documentStore performAsynchronousFileAccessUsingBlock:^{
+        [[NSOperationQueue mainQueue] addOperationWithBlock:^{
+            for (NSError *error in errors)
+                OUI_PRESENT_ERROR(error);
+            
+            // Provoke a scan, which will poke our file items binding, which will cause the animation to start
+            [_documentStore scanItemsWithCompletionHandler:^{
+                [self clearSelection:YES];
+                [[UIApplication sharedApplication] endIgnoringInteractionEvents];
+            }];
+        }];
+    }];
 }
 
-- (void)_deleteDocumentAnimationDidStop:(NSString *)animationID finished:(NSNumber *)finished context:(void *)context;
+- (void)_updateFieldsForSelectedFileItem;
 {
-    DeleteProxyContext *ctx = context;
-    
-    // Hide the view (OUIDocumentPicker will unhide when it reuses the view) and restore the alpha for the next user.
-    OBASSERT(ctx->deleteProxy.view != nil);
-    ctx->deleteProxy.view.hidden = YES;
-    ctx->deleteProxy.view.alpha = 1;
-    
-    [UIView beginAnimations:@"delete document slide" context:ctx];
-    [UIView setAnimationDuration:0.3];
-    [UIView setAnimationCurve:UIViewAnimationCurveEaseIn];
-    {
-        [self rescanDocumentsScrollingToURL:ctx->nextProxyURL];
-    }
-    [UIView commitAnimations];
-    
-    OBASSERT(ctx->deleteProxy.view == nil);
-    
-    [ctx->nextProxyURL release];
-    [ctx->deleteProxy release];
-    free(ctx);
-}
-
-- (CAMediaTimingFunction *)_caMediaTimingFunctionForUIViewAnimationCurve:(UIViewAnimationCurve)uiViewAnimationCurve;
-{
-    NSString *mediaTimingFunctionName = nil;
-    switch (uiViewAnimationCurve) {
-        case UIViewAnimationCurveEaseInOut:
-            mediaTimingFunctionName = kCAMediaTimingFunctionEaseInEaseOut;
-            break;
-        case UIViewAnimationCurveEaseIn:
-            mediaTimingFunctionName = kCAMediaTimingFunctionEaseIn;
-            break;
-        case UIViewAnimationCurveEaseOut:
-            mediaTimingFunctionName = kCAMediaTimingFunctionEaseOut;
-            break;
-        case UIViewAnimationCurveLinear:
-        default:
-            mediaTimingFunctionName = kCAMediaTimingFunctionLinear;
-            break;
-    }
-    return [CAMediaTimingFunction functionWithName:mediaTimingFunctionName];
-}
-
-- (void)_animateWithKeyboard:(NSNotification *)notification showing:(BOOL)keyboardIsShowing;
-{
-    CGRect keyboardEndFrame = [[[notification userInfo] objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
-    keyboardEndFrame = [self.view.superview convertRect:keyboardEndFrame fromView:nil];
-    CGFloat spacer = 25;
-
-    _previewScrollView.disableLayout = YES;
-
-    _addPushAndFadeAnimations(self, keyboardIsShowing/*fade*/, AnimateNeighborProxies);
-
-    CGRect availableSpace = [UIScreen mainScreen].applicationFrame;
-    availableSpace = [self.view.superview convertRect:availableSpace fromView:nil];
-    availableSpace.size.height -= keyboardEndFrame.size.height;
-    availableSpace.size.height -= 44;   // toolbar height
-    availableSpace.size.height -= _titleEditingField.frame.size.height;
-    availableSpace.size.height -= spacer*3; // space above proxy view + space between proxy and text view + space between text view and keyboard
-    availableSpace.origin.y = spacer;
-    
-    // animate the selected proxy size to correspond with reduced view size
-    OUIDocumentProxy *centerProxy = _previewScrollView.proxyClosestToCenter;
-    UIView *animatingView = centerProxy.view;
-    
-    // can happen when toggling japanese - adding the animation again results in a distracting re-animation
-    if (!keyboardIsShowing || ![animatingView.layer animationForKey:PositionAdjustAnimation]) {
-        CGFloat newHeight = availableSpace.size.height;
-        if (newHeight > animatingView.layer.bounds.size.height)
-            newHeight = animatingView.layer.bounds.size.height;
-        CGFloat proportion = newHeight / animatingView.layer.bounds.size.height;
-        CGFloat newWidth = animatingView.layer.bounds.size.width * proportion;
-        
-        CABasicAnimation *positionAnimation = [CABasicAnimation animationWithKeyPath:@"position"];
-        CGPoint endPosition = CGPointMake(animatingView.layer.position.x, CGRectGetMidY(availableSpace));
-        if (keyboardIsShowing) {
-            positionAnimation.toValue = [NSValue valueWithCGPoint:endPosition];
-        } else {
-            positionAnimation.fromValue = [NSValue valueWithCGPoint:endPosition];
-        }
-        
-        CABasicAnimation *boundsAnimation = [CABasicAnimation animationWithKeyPath:@"bounds.size"];
-        if (keyboardIsShowing) {
-            boundsAnimation.toValue = [NSValue valueWithCGSize:CGSizeMake(newWidth, newHeight)];
-        } else {
-            boundsAnimation.fromValue = [NSValue valueWithCGSize:CGSizeMake(newWidth, newHeight)];
-        }
-        
-        CAAnimationGroup *group = [CAAnimationGroup animation];
-        group.fillMode = kCAFillModeForwards;
-        group.removedOnCompletion = !keyboardIsShowing;
-        group.duration = [[[notification userInfo] objectForKey:UIKeyboardAnimationDurationUserInfoKey] floatValue];
-        group.timingFunction = [self _caMediaTimingFunctionForUIViewAnimationCurve:[[[notification userInfo] objectForKey:UIKeyboardAnimationCurveUserInfoKey] unsignedIntegerValue]];
-        group.animations = [NSArray arrayWithObjects:positionAnimation, boundsAnimation, nil];
-        
-        [animatingView.layer addAnimation:group forKey:PositionAdjustAnimation];
-        
-        CGFloat deltaX = animatingView.layer.bounds.size.width - newWidth;
-        CGFloat deltaY = animatingView.layer.bounds.size.height - newHeight;
-        NSUInteger edge = 0;
-        for (UIView *shadowView in [(OUIDocumentProxyView *)animatingView shadowEdgeViews]) {
-            CALayer *shadowLayer = shadowView.layer;
-            
-            CGRect shadowLayerBounds = shadowLayer.bounds;
-            CGFloat newShadowHeight = shadowLayerBounds.size.height;
-            CGFloat newShadowWidth = shadowLayerBounds.size.width;
-            
-            CGPoint endPosition = CGPointZero;
-            if (edge == 0 /* Bottom */) {
-                endPosition = CGPointMake(shadowLayer.position.x - deltaX/2, shadowLayer.position.y - deltaY);
-                newShadowWidth *= proportion;
-            } else if (edge == 1 /* Top */) {
-                endPosition = CGPointMake(shadowLayer.position.x - deltaX/2, shadowLayer.position.y);
-                newShadowWidth *= proportion;
-            } else if (edge == 2 /* Left */) {
-                endPosition = CGPointMake(shadowLayer.position.x, shadowLayer.position.y - deltaY/2);
-                newShadowHeight *= proportion;
-            } else if (edge == 3 /* Right */) {
-                endPosition = CGPointMake(shadowLayer.position.x - deltaX, shadowLayer.position.y - deltaY/2);
-                newShadowHeight *= proportion;
-            }
-            
-            CABasicAnimation *shadowPositionAnimation = [CABasicAnimation animationWithKeyPath:@"position"];
-            if (keyboardIsShowing) {
-                shadowPositionAnimation.toValue = [NSValue valueWithCGPoint:endPosition];
-            } else {
-                shadowPositionAnimation.fromValue = [NSValue valueWithCGPoint:endPosition];
-            }
-            
-            CABasicAnimation *shadowBoundsAnimation = [CABasicAnimation animationWithKeyPath:@"bounds.size"];
-            if (keyboardIsShowing) {
-                shadowBoundsAnimation.toValue = [NSValue valueWithCGSize:CGSizeMake(newShadowWidth, newShadowHeight)];
-            } else {
-                shadowBoundsAnimation.fromValue = [NSValue valueWithCGSize:CGSizeMake(newShadowWidth, newShadowHeight)];
-            }
-            
-            CAAnimationGroup *shadowGroup = [CAAnimationGroup animation];
-            shadowGroup.fillMode = kCAFillModeForwards;
-            shadowGroup.removedOnCompletion = !keyboardIsShowing;
-            shadowGroup.duration = [[[notification userInfo] objectForKey:UIKeyboardAnimationDurationUserInfoKey] floatValue];
-            shadowGroup.timingFunction = [self _caMediaTimingFunctionForUIViewAnimationCurve:[[[notification userInfo] objectForKey:UIKeyboardAnimationCurveUserInfoKey] unsignedIntegerValue]];
-            shadowGroup.animations = [NSArray arrayWithObjects:shadowPositionAnimation, shadowBoundsAnimation, nil];
-            
-            [shadowLayer addAnimation:shadowGroup forKey:PositionAdjustAnimation];
-            
-            edge++;
-        }
-    }
-
-
-    // animate the document date label and actions buttons
-    [UIView beginAnimations:@"layout document date label and action buttons during keyboard show animation" context:nil];
-    {
-        [UIView setAnimationDuration:[[[notification userInfo] objectForKey:UIKeyboardAnimationDurationUserInfoKey] floatValue]];
-        [UIView setAnimationCurve:[[[notification userInfo] objectForKey:UIKeyboardAnimationCurveUserInfoKey] intValue]];
-        if (keyboardIsShowing) {
-            CGPoint _titleEditingFieldOrigin = CGPointMake(_titleEditingField.frame.origin.x, CGRectGetMinY(keyboardEndFrame) - _titleEditingField.frame.size.height - spacer);
-            _titleEditingField.frame = (CGRect){.origin = _titleEditingFieldOrigin, .size = _titleEditingField.frame.size};
-        } else {
-            CGRect titleEditingFieldFrame = [_titleEditingField frame];
-            titleEditingFieldFrame.origin.x = CGRectGetMidX(_titleLabel.frame) - titleEditingFieldFrame.size.width/2;
-            titleEditingFieldFrame.origin.y = CGRectGetMidY(_titleLabel.frame) - titleEditingFieldFrame.size.height/2;
-            _titleEditingField.frame = titleEditingFieldFrame;
-        }
-    }
-    [UIView commitAnimations];
-}
-
-- (NSURL *)_renameProxy:(OUIDocumentProxy *)proxy toName:(NSString *)name type:(NSString *)documentUTI rescanDocuments:(BOOL)rescanDocuments;
-{
-    CFStringRef extension = UTTypeCopyPreferredTagWithClass((CFStringRef)documentUTI, kUTTagClassFilenameExtension);
-    if (!extension)
-        OBRequestConcreteImplementation(self, _cmd); // UTI not registered in the Info.plist?
-    
-    NSString *directory = [[self class] userDocumentsDirectory];
-    NSUInteger emptyCounter = 0;
-    NSString *safePath = _availablePath(directory, name, (NSString *)extension, &emptyCounter);
-    CFRelease(extension);
-    
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSURL *oldURL = [proxy url];
-    NSError *error = nil;
-    if (![fileManager moveItemAtPath:[oldURL path] toPath:safePath error:&error]) {
-        NSLog(@"Unable to copy %@ to %@: %@", [oldURL path], safePath, [error toPropertyList]);
-        return [proxy url];
-    }
-    NSDictionary *attributes = [fileManager attributesOfItemAtPath:safePath error:NULL];
-    if (attributes != nil) {
-        NSUInteger mode = [attributes filePosixPermissions];
-        if ((mode & S_IWUSR) == 0) {
-            mode |= S_IWUSR;
-            [fileManager setAttributes:[NSDictionary dictionaryWithObject:[NSNumber numberWithUnsignedInteger:mode] forKey:NSFilePosixPermissions] ofItemAtPath:safePath error:NULL]; // Not bothering to check for errors:  if this fails, we'll find out when it matters
-        }
-    }
-    
-    NSURL *newURL = [NSURL fileURLWithPath:safePath];
-    [proxy setUrl:newURL];
-    
-    
-    [self willChangeValueForKey:ProxiesBinding];
-    [_proxies autorelease];
-    _proxies = [[NSSet alloc] initWithSet:_proxies];
-    [self didChangeValueForKey:ProxiesBinding];
-
-    if ([self isViewLoaded]) {
-        [_titleLabel setTitle:[proxy name] forState:UIControlStateNormal];
-         [self _setupProxiesBinding];
-    }
-
-    [self documentPickerView:_previewScrollView didSelectProxy:proxy];
-    
-    if (rescanDocuments)
-        [self rescanDocumentsScrollingToURL:newURL];
-    
-    return newURL;
-}
-
-- (void)_updateFieldsForSelectedProxy;
-{
-    if (_titleLabel == nil && _dateLabel == nil)
-        return; // Our fields aren't hooked up yet, so we can't set their values yet
-
-    OUIDocumentProxy *proxy = self.selectedProxy;
-    if (proxy == _nonretainedDisplayedProxy)
-        return; // We've already displayed values for this proxy
-
-    _nonretainedDisplayedProxy = proxy;
-    if (proxy == nil) {
-        _titleLabel.hidden = YES;
-        _dateLabel.hidden = YES;
-    } else {
-        _titleLabel.hidden = NO;
-        _dateLabel.hidden = NO;
-    }
-    
-    [_titleLabel setTitle:[proxy name] forState:UIControlStateNormal];
-    _dateLabel.text = [proxy dateString];
-
-    _exportButton.enabled = (proxy != nil);
-    _favoriteButton.enabled = (proxy != nil);
-    _deleteButton.enabled = [self canEditProxy:proxy];
-}
-
-+ (OFPreference *)_sortPreference;
-{
-    static OFPreference *SortPreference = nil;
-    if (SortPreference == nil) {
-        OFEnumNameTable *enumeration = [[OFEnumNameTable alloc] initWithDefaultEnumValue:OUIDocumentProxySortByDate];
-        [enumeration setName:@"name" forEnumValue:OUIDocumentProxySortByName];
-        [enumeration setName:@"date" forEnumValue:OUIDocumentProxySortByDate];
-        SortPreference = [[OFPreference preferenceForKey:@"OUIDocumentPickerSortKey" enumeration:enumeration] retain];
-        [enumeration release];
-    }
-    return SortPreference;
-}
-
-- (void)_updateSort;
-{
-    self.previewScrollView.proxySort = [[[self class] _sortPreference] enumeratedValue];
+    OBFinishPortingLater("Update the enabledness of the export/delete bar button items based on how many file items are selected");
+#if 0
+    _exportBarButtonItem.enabled = (proxy != nil);
+    _deleteBarButtonItem.enabled = (proxy != nil);
+#endif
 }
 
 - (NSMutableDictionary *)openInMapCache;
@@ -2532,17 +1964,279 @@ typedef struct {
     return _openInMapCache;
 }
 
-- (BOOL)_canUseOpenInWithProxy:(OUIDocumentProxy *)proxy;
+
+- (BOOL)_canUseOpenInWithFileItem:(OFSDocumentStoreFileItem *)fileItem;
 {
     // Check current type.
-    NSString *proxyType = [OFSFileInfo UTIForURL:proxy.url];
-    BOOL canUseOpenInWithCurrentType = [self _canUseOpenInWithExportType:proxyType];
+    OBFinishPortingLater("<bug:///75843> (Add a UTI property to OFSDocumentStoreFileItem)");
+    NSString *fileType = OFUTIForFileExtensionPreferringNative(fileItem.fileURL.pathExtension, NO); // NSString *fileType = [OFSFileInfo UTIForURL:fileItem.fileURL];
+    BOOL canUseOpenInWithCurrentType = [self _canUseOpenInWithExportType:fileType];
     if (canUseOpenInWithCurrentType) {
         return YES;
     }
     
-    NSArray *types = [self availableDocumentInteractionExportTypesForProxy:proxy];
+    NSArray *types = [self availableExportTypesForFileItem:fileItem withSyncType:OUISyncTypeNone exportOptionsType:OUIExportOptionsSendToApp];
     return ([types count] > 0) ? YES : NO;
+}
+
+- (void)_applicationDidEnterBackground:(NSNotification *)note;
+{
+    OBPRECONDITION(self.visibility == OUIViewControllerVisibilityVisible); // We only subscribe when we are visible
+    
+    [self setEditing:NO];
+    
+    // Reset openInMapCache incase someone adds or delets an app.
+    [self.openInMapCache removeAllObjects];
+    
+    // Clean up unused previews
+    [OUIDocumentPreview deletePreviewsNotUsedByFileItems:[_documentStore fileItems]];
+    [OUIDocumentPreview flushPreviewImageCache];
+}
+
+- (void)_applicationWillEnterForeground:(NSNotification *)note;
+{
+    OBPRECONDITION(self.visibility == OUIViewControllerVisibilityVisible); // We only subscribe when we are visible
+    
+    // OBFinishPorting: If you activate the app and immediately start scrolling the previews for newly exposed items might not be loaded yet.
+    [OUIDocumentPreview updatePreviewImageCacheWithCompletionHandler:nil];
+}
+
+- (void)_startRenamingFileItem:(OFSDocumentStoreFileItem *)fileItem;
+{
+    // We can't be editing it already (since all the normal items are hidden if we are). We might be in Edit mode, though.
+    OBPRECONDITION(_renameViewController == nil);
+    OBPRECONDITION(fileItem);
+
+    // Get the rename controller into its initial state
+    _renameViewController = [[OUIDocumentRenameViewController alloc] initWithDocumentPicker:self fileItem:fileItem];
+    [self addChildViewController:_renameViewController];
+    
+    _renameViewController.view.frame = self.view.bounds;
+    [self.view addSubview:_renameViewController.view];
+    
+    [_renameViewController didMoveToParentViewController:self];
+    
+    [_renameViewController startRenaming];
+}
+
+// Called by OUIDocumentRenameViewController
+- (void)_didPerformRename;
+{
+    OBPRECONDITION(_renameViewController);
+    
+    // The rename itself has finished, so this is a good time to rescan and layout.
+    [self rescanDocuments];
+    [self.view layoutIfNeeded];
+}
+
+- (void)_didStopRenamingFileItem;
+{
+    OBPRECONDITION(_renameViewController);
+    
+    [_renameViewController willMoveToParentViewController:nil];
+    
+    [_renameViewController.view removeFromSuperview];
+    [_renameViewController removeFromParentViewController];
+    
+    [_renameViewController release];
+    _renameViewController = nil;
+}
+
+- (void)_startDragRecognizer:(OUIDragGestureRecognizer *)recognizer;
+{
+    UIGestureRecognizerState state = recognizer.state;
+    
+    if (state == UIGestureRecognizerStateBegan) {
+        OBASSERT(_dragSession == nil);
+        [_dragSession release];
+        
+        NSMutableSet *fileItems = [NSMutableSet setWithSet:[self selectedFileItems]];
+
+        OUIDocumentPickerFileItemView *fileItemView = [self.activeScrollView fileItemViewHitInPreviewAreaByRecognizer:recognizer];
+        OFSDocumentStoreFileItem *fileItem = (OFSDocumentStoreFileItem *)fileItemView.item;
+        OBASSERT([fileItem isKindOfClass:[OFSDocumentStoreFileItem class]]);
+        if (fileItem)
+            [fileItems addObject:fileItem];
+        
+        if ([fileItems count] > 0)
+            _dragSession = [[OUIDocumentPickerDragSession alloc] initWithDocumentPicker:self fileItems:fileItems recognizer:recognizer];
+    }
+    
+    // NOTE: We do not look for ended/cancelled states here to clear out _dragSession. It sends us a -dragSessionTerminated, which will happen some time *after* these states, based on animation.
+    [_dragSession handleRecognizerChange];
+}
+
+- (void)_openGroup:(OFSDocumentStoreGroupItem *)groupItem andEditTitle:(BOOL)editTitle;
+{
+    OBPRECONDITION(self.activeScrollView == _mainScrollView);
+    OBPRECONDITION(_openGroupItemsBinding == nil);
+    OBPRECONDITION(groupItem);
+    OBPRECONDITION([_documentStore.topLevelItems member:groupItem]);
+    
+    OBFinishPortingLater("Fix lots of sizing edge cases based on the position of the group in the main scroll view and the number of items in the group.");
+    OBFinishPortingLater("Handle editing the title, shadow top/bottom edge views, animation, tapping out");
+                         
+    [_openGroupItemsBinding invalidate];
+    [_openGroupItemsBinding release];
+    
+    _openGroupItemsBinding = [[OFSetBinding alloc] initWithSourcePoint:OFBindingPointMake(groupItem, OFSDocumentStoreGroupItemFileItemsBinding)
+                                                      destinationPoint:OFBindingPointMake(self, OpenGroupItemsBinding)];
+    [_openGroupItemsBinding propagateCurrentValue];
+
+    CGRect groupFrame = CGRectInset(_mainScrollView.bounds, 0, 50);
+    _groupScrollView.frame = groupFrame;
+    [_mainScrollView addSubview:_groupScrollView];
+    [_mainScrollView layoutIfNeeded];
+}
+
+- (void)_revealAndActivateNewDocumentFileItem:(OFSDocumentStoreFileItem *)createdFileItem completionHandler:(void (^)(void))completionHandler;
+{
+    OBPRECONDITION(createdFileItem);
+    
+    // Trying a fade in of the new document instead of having all the scrolling/sliding previews
+#if 1
+    if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:openCreatedFileItem:)])
+        [_nonretained_delegate documentPicker:self openCreatedFileItem:createdFileItem];
+    
+    _isRevealingNewDocument = NO;
+    
+    if (completionHandler)
+        completionHandler();
+#else
+    // iWork uses a grid-layout theme picker and then zooms the preview of the selected template into the full screen. We don't yet have templates, but we could do the same someday.
+    
+    OBFinishPortingLater("Deal with having an open group and looking in the right picker scroll view");
+    
+    // At first it should not take up space.
+    [_mainScrollView startIgnoringItemForLayout:createdFileItem];
+    [_mainScrollView setNeedsLayout];
+    [_mainScrollView layoutIfNeeded];
+    
+    [self scrollItemToVisible:createdFileItem animated:NO];
+    
+    OUIDocumentPickerFileItemView *fileItemView = [_mainScrollView fileItemViewForFileItem:createdFileItem];
+    OBASSERT(fileItemView != nil); // should have had a view assigned.
+    fileItemView.alpha = 0; // start out transparent
+    
+    // Turn on layout advancing for this file item and do an animated layout, sliding to make room for it.
+    [_mainScrollView stopIgnoringItemForLayout:createdFileItem];
+    
+    OBFinishPortingLater("rewrite this with OUIAnimationSequence and with the right animation");
+    
+    [OUIAnimationSequence runWithDuration:0.3 actions:
+     ^{
+         [UIView setAnimationCurve:UIViewAnimationCurveEaseIn];
+         [_mainScrollView layoutSubviews];
+     },
+     ^{
+         OUIDocumentPickerFileItemView *fileItemView = [_mainScrollView fileItemViewForFileItem:createdFileItem];
+         OBASSERT(fileItemView);
+         fileItemView.alpha = 1;
+     },
+     ^{
+         OUIWithoutAnimating(^{
+             [_mainScrollView setNeedsLayout];
+             [_mainScrollView layoutIfNeeded];
+             
+             if ([_nonretained_delegate respondsToSelector:@selector(documentPicker:openCreatedFileItem:)])
+                 [_nonretained_delegate documentPicker:self openCreatedFileItem:createdFileItem];
+
+             _isRevealingNewDocument = NO;
+         });
+         
+         if (completionHandler)
+             completionHandler();
+     },
+     nil];
+#endif
+}
+
+- (void)_beginIgnoringDocumentsDirectoryUpdates;
+{
+    OBPRECONDITION([NSThread isMainThread]);
+    _ignoreDocumentsDirectoryUpdates++;
+}
+
+- (void)_endIgnoringDocumentsDirectoryUpdates;
+{
+    OBPRECONDITION([NSThread isMainThread]);
+    OBPRECONDITION(_ignoreDocumentsDirectoryUpdates > 0);
+    
+    if (_ignoreDocumentsDirectoryUpdates > 0)
+        _ignoreDocumentsDirectoryUpdates--;
+}
+
+@synthesize topItems = _topItems;
+- (void)setTopItems:(NSSet *)topItems;
+{
+    if (OFISEQUAL(_topItems, topItems))
+        return;
+    
+    [_topItems release];
+    _topItems = [[NSSet alloc] initWithSet:topItems];
+    
+    if (_ignoreDocumentsDirectoryUpdates == 0) {
+        [self _propagateItems:_topItems toScrollView:_mainScrollView];
+        [self _updateToolbarItemsEnabledness];
+    }
+}
+
+@synthesize openGroupItems = _openGroupItems;
+- (void)setOpenGroupItems:(NSSet *)openGroupItems;
+{
+    if (OFISEQUAL(_openGroupItems, openGroupItems))
+        return;
+    
+    [_openGroupItems release];
+    _openGroupItems = [[NSSet alloc] initWithSet:openGroupItems];
+    
+    if (_ignoreDocumentsDirectoryUpdates == 0) {
+        [self _propagateItems:_openGroupItems toScrollView:_groupScrollView];
+        [self _updateToolbarItemsEnabledness];
+    }
+}
+
+- (void)_propagateItems:(NSSet *)items toScrollView:(OUIDocumentPickerScrollView *)scrollView;
+{
+    NSSet *currentItems = scrollView.items;
+    if (OFISEQUAL(items, currentItems))
+        return;
+    
+    // If needed later, we could have a flag that says to bail on propagating and we can accumulate differences between the current state and the view state until some time later.
+    BOOL isVisible = (self.visibility == OUIViewControllerVisibilityVisible);
+    NSTimeInterval animationInterval = isVisible ? OUIAnimationSequenceDefaultDuration : OUIAnimationSequenceImmediateDuration;
+    
+    NSMutableSet *toRemove = [[currentItems mutableCopy] autorelease];
+    [toRemove minusSet:items];
+    
+    NSMutableSet *toAdd = [[items mutableCopy] autorelease];
+    [toAdd minusSet:currentItems];
+
+    [OUIAnimationSequence runWithDuration:animationInterval actions:
+     ^{
+         if ([toRemove count] > 0)
+             [scrollView startRemovingItems:toRemove]; // Shrink/fade or whatever
+     },
+     ^{
+         if ([toRemove count] > 0) {
+             [scrollView finishRemovingItems:toRemove]; // Actually remove them and release the space taken
+             if (isVisible)
+                 [scrollView layoutIfNeeded]; // If we aren't visible, we might not be fully configured for layout yet
+         }
+     },
+     ^{
+         if ([toAdd count] > 0) {
+             // Add them and make room in the layout
+             [scrollView startAddingItems:toAdd];
+             if (isVisible)
+                 [scrollView layoutIfNeeded]; // If we aren't visible, we might not be fully configured for layout yet
+         }
+     },
+     ^{
+         if ([toAdd count] > 0)
+             [scrollView finishAddingItems:toAdd]; // Zoom/fade them into the space made
+     },
+     nil];
 }
 
 @end

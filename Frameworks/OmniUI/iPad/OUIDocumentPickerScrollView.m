@@ -8,24 +8,27 @@
 #import <OmniUI/OUIDocumentPickerScrollView.h>
 
 #import <OmniFoundation/NSArray-OFExtensions.h>
+#import <OmniFoundation/OFCFCallbacks.h>
+#import <OmniFoundation/OFExtent.h>
+#import <OmniFileStore/OFSDocumentStoreFileItem.h>
+#import <OmniFileStore/OFSDocumentStoreGroupItem.h>
+#import <OmniUI/OUIAppController.h>
+#import <OmniUI/OUIDirectTapGestureRecognizer.h>
+#import <OmniUI/OUIDocumentPickerFileItemView.h>
+#import <OmniUI/OUIDocumentPickerGroupItemView.h>
 #import <OmniUI/OUIDocumentPreview.h>
-#import <OmniUI/OUIDocumentProxy.h>
-#import <OmniUI/OUIDocumentProxyView.h>
-#import <OmniUI/OUIToolbarViewController.h>
+#import <OmniUI/OUIMainViewController.h>
+#import <OmniUI/OUISingleDocumentAppController.h>
+#import <OmniUI/UIGestureRecognizer-OUIExtensions.h>
 #import <OmniUI/UIView-OUIExtensions.h>
 
-#import "OUIDocumentSlider.h"
-#import "OUIDocumentProxy-Internal.h"
+#import "OUIDocumentPickerItemView-Internal.h"
+#import "OUIDocumentPreviewView.h"
+#import "OUIMainViewControllerBackgroundView.h"
 
 RCS_ID("$Id$");
 
-NSString * const OUIDocumentPickerScrollViewProxiesBinding = @"proxies";
-
-#if 0 && defined(DEBUG_bungi)
-    #define DEBUG_SCROLL(format, ...) NSLog((format), ## __VA_ARGS__)
-#else
-    #define DEBUG_SCROLL(format, ...)
-#endif
+NSString * const OUIDocumentPickerScrollViewItemsBinding = @"items";
 
 #if 0 && defined(DEBUG_bungi)
     #define DEBUG_LAYOUT(format, ...) NSLog(@"DOC LAYOUT: " format, ## __VA_ARGS__)
@@ -33,341 +36,89 @@ NSString * const OUIDocumentPickerScrollViewProxiesBinding = @"proxies";
     #define DEBUG_LAYOUT(format, ...)
 #endif
 
-#define USE_CUSTOM_SCROLLING 1
+// OUIDocumentPickerScrollViewDelegate
+OBDEPRECATED_METHOD(-documentPickerView:didSelectProxy:);
+
+static const CGFloat kItemVerticalPadding = 27;
+static const CGFloat kItemHorizontalPadding = 28;
+static const UIEdgeInsets kEdgeInsets = (UIEdgeInsets){35/*top*/, 35/*left*/, 35/*bottom*/, 35/*right*/};
+
+typedef struct LayoutInfo {
+    CGRect contentRect;
+    CGSize itemSize;
+    NSUInteger itemsPerRow;
+} LayoutInfo;
+
+static LayoutInfo _updateLayout(OUIDocumentPickerScrollView *self);
+
+// Items are laid out in a fixed size grid.
+static CGRect _frameForPositionAtIndex(NSUInteger itemIndex, CGSize itemSize, NSUInteger itemsPerRow)
+{
+    OBPRECONDITION(itemSize.width > 0);
+    OBPRECONDITION(itemSize.height > 0);
+    OBPRECONDITION(itemsPerRow > 0);
+    
+    NSUInteger row = itemIndex / itemsPerRow;
+    NSUInteger column = itemIndex % itemsPerRow;
+    
+    CGRect frame = CGRectMake(column * (itemSize.width + kItemHorizontalPadding), row * (itemSize.height + kItemVerticalPadding), itemSize.width, itemSize.height);
+    
+    // CGRectIntegral can make the rect bigger when the size is integral but the position is fractional. We want the size to remain the same.
+    CGRect integralFrame;
+    integralFrame.origin.x = floor(frame.origin.x);
+    integralFrame.origin.y = floor(frame.origin.y);
+    integralFrame.size = frame.size;
+    
+    return CGRectIntegral(integralFrame);
+}
+
+static CGPoint _clampContentOffset(CGPoint contentOffset, CGRect bounds, CGSize contentSize)
+{
+    OFExtent contentOffsetYExtent = OFExtentMake(-kEdgeInsets.top, MAX(0, contentSize.height - bounds.size.height + kEdgeInsets.top + kEdgeInsets.bottom));
+    CGPoint clampedContentOffset = CGPointMake(contentOffset.x, OFExtentClampValue(contentOffsetYExtent, contentOffset.y));
+    return clampedContentOffset;
+}
+
+@interface OUIDocumentPickerScrollView (/*Private*/)
+- (void)_itemViewTapped:(UITapGestureRecognizer *)recognizer;
++ (CGSize)_gridSizeForLandscape:(BOOL)landscape;
+@end
 
 @implementation OUIDocumentPickerScrollView
+{
+    BOOL _landscape;
+    
+    NSMutableSet *_items;
+    NSArray *_sortedItems;
+    id _draggingDestinationItem;
+    
+    NSMutableSet *_itemsBeingAdded;
+    NSMutableSet *_itemsIgnoredForLayout;
+    
+    struct {
+        unsigned int isAnimatingRotationChange:1;
+        unsigned int isEditing:1;
+    } _flags;
+    
+    OUIDocumentPickerItemSort _itemSort;
+
+    NSArray *_itemViewsForPreviousOrientation;
+    NSArray *_fileItemViews;
+    NSArray *_groupItemViews;
+}
 
 static id _commonInit(OUIDocumentPickerScrollView *self)
 {
-//    self.pagingEnabled = YES; // stop on multiples of view bounds
-        
-#if USE_CUSTOM_SCROLLING
-    self.scrollEnabled = NO; // This sets enabled=NO on the built-in recognizers, but doesn't remove them.
-    UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(_handlePickerPanGesture:)];
-    [self addGestureRecognizer:pan];
-    [pan release];
-#endif
+    self->_items = [[NSMutableSet alloc] init];
+    self->_itemsBeingAdded = [[NSMutableSet alloc] init];
+    self->_itemsIgnoredForLayout = [[NSMutableSet alloc] init];
     
-    self.showsVerticalScrollIndicator = NO;
-    self.showsHorizontalScrollIndicator = YES;
+    self.showsVerticalScrollIndicator = YES;
+    self.showsHorizontalScrollIndicator = NO;
     
-    // Create six proxy views. One for the center, two for the nearest neighbors (on screen), two for speculatively loaded views past those neighbors and one for a potential duplicate being animated in.
-    NSMutableArray *proxyViews = [NSMutableArray array];
-    NSUInteger viewCount = 6;
-    while (viewCount--) {
-        OUIDocumentProxyView *view = [[OUIDocumentProxyView alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
-        view.hidden = YES;
-        [self addSubview:view];
-        [proxyViews addObject:view];
-        [view release];
-    }
-    self->_proxyViews = [[NSArray alloc] initWithArray:proxyViews];
+    self.alwaysBounceVertical = YES;
     
     return self;
-}
-
-static const CGFloat kMinimumVelocityToStartDeceleration = 15;
-
-static CGPoint _contentOffsetForCenteringProxy(OUIDocumentPickerScrollView *self, OUIDocumentProxy *proxy)
-{
-    OBPRECONDITION(proxy);
-    
-    CGRect proxyFrame = proxy.frame;
-    return CGPointMake(floor(CGRectGetMidX(proxyFrame) - self.bounds.size.width / 2), 0);
-}
-
-static void _cancelSmoothScroll(OUIDocumentPickerScrollViewSmoothScroll *ss)
-{
-    [ss->timer invalidate];
-    [ss->timer release];    
-    memset(ss, 0, sizeof(*ss));
-}
-
-// The built-in scrolling support doesn't clamp.  Instead, as you pull further past the end, you get less and less return for your effort. Eventually you hit the edge of the screen and the snapback starts.
-
-// TODO: Show scrollers while panning
-
-static CGPoint _handleOverpull(OUIDocumentPickerScrollView *self, CGPoint desiredOffset)
-{
-    if ([self->_sortedProxies count] == 0)
-        return CGPointZero;
-    
-    const CGFloat kOverpullDampenPower = 0.8;
-
-    CGFloat leftLimit = _contentOffsetForCenteringProxy(self, self.firstProxy).x;
-    if (desiredOffset.x < leftLimit) {
-        CGFloat overpull = leftLimit - desiredOffset.x;
-        CGFloat dampened = pow(overpull, kOverpullDampenPower);
-        
-        return CGPointMake(floor(desiredOffset.x + dampened), desiredOffset.y);
-    }
-
-    CGFloat rightLimit = _contentOffsetForCenteringProxy(self, self.lastProxy).x;
-    if (desiredOffset.x > rightLimit) {
-        CGFloat overpull = desiredOffset.x - rightLimit;
-        CGFloat dampened = pow(overpull, kOverpullDampenPower);
-        
-        return CGPointMake(floor(desiredOffset.x - dampened), desiredOffset.y);
-    }
-
-    return desiredOffset;
-}
-
-static BOOL _shouldConstrainOffsetToScrollLimits(OUIDocumentPickerScrollView *self, CGFloat xOffset, CGPoint *outLimitPoint)
-{    
-    CGPoint leftOffset = _contentOffsetForCenteringProxy(self, self.firstProxy);
-    if (xOffset < leftOffset.x) {
-        if (outLimitPoint)
-            *outLimitPoint = leftOffset;
-        return YES; // bounced!
-    }
-    
-    CGPoint rightOffset = _contentOffsetForCenteringProxy(self, self.lastProxy);
-    if (xOffset > rightOffset.x) {
-        if (outLimitPoint)
-            *outLimitPoint = rightOffset;
-        return YES; // bounced!
-    }
-    
-    return NO;
-}
-
-static BOOL _shouldConstrainToScrollLimits(OUIDocumentPickerScrollView *self, CGPoint *outLimitPoint)
-{
-    CGPoint offset = self.contentOffset;
-    return _shouldConstrainOffsetToScrollLimits(self, offset.x, outLimitPoint);
-}
-
-static OUIDocumentProxy *_proxyWithCenterClosestToContentOffsetX(OUIDocumentPickerScrollView *self, CGFloat xTarget)
-{
-    OUIDocumentProxy *closestProxy = nil;
-    CGFloat closestDistance = CGFLOAT_MAX;
-    
-    for (OUIDocumentProxy *proxy in self->_proxies) {
-        CGFloat proxyXCenter = _contentOffsetForCenteringProxy(self, proxy).x;
-        CGFloat distance = fabs(proxyXCenter - xTarget);
-        if (closestDistance > distance) {
-            closestDistance = distance;
-            closestProxy = proxy;
-        }
-    }
-    
-    return closestProxy;
-}
-
-
-/*
- Slow the scroll down as if with a constant friction force.  Friction is a constant force in the opposite direction of velocity and is related to the normal force and the friction constant.  We'll just assume the normal force is 1 and make the friction force be a constant (opposite the direction of velocity).
- 
- Then, F=ma, if we assume our scroll view has mass 1, we just have a = F.
- 
- Relating position to time with a constant acceleration, we have the standard
- 
- x(t) = x(0) + v(0)*t + 1/2 a*t^2
- 
- */
-
-// Physics tuning knobs.
-static const CGFloat kSmoothScrollFriction = 4000; // Higher is more sticky
-static const CGFloat kBounceFrictionFactor = 50; // A scale factor to the friction force above to slow down faster when in the bounce zone
-static const CGFloat kVelocityScale = 0.5; // Scaling factor from the event's delta to the initial velocity in view space -- so, this controls the mapping between the touch velocity and the initial speed
-
-
-static BOOL _oppositeSigns(CGFloat a, CGFloat b)
-{
-    return (a * b) < 0;
-}
-
-static NSTimeInterval _smoothScrollDuration(OUIDocumentPickerScrollViewSmoothScroll ss)
-{
-    // v = v0 + a*t.  Looking for v=0
-    
-    return -ss.v0 / ss.a;
-}
-
-static CGFloat _smoothScrollXOffsetAfterDuration(OUIDocumentPickerScrollViewSmoothScroll ss, NSTimeInterval t)
-{
-    return ss.x0 + ss.v0*t + 0.5 * ss.a * t*t;
-}
-
-static CGFloat _smoothScrollStartingVelocityToHitOffsetAfterDuration(OUIDocumentPickerScrollViewSmoothScroll ss, CGFloat targetX)
-{
-    /*
-     Compute a starting velocity that will hit the given target position exactly when v reaches zero, given the constant acceleration due to the friction force opposite the initial velocity direction. The time this takes will be unknown -- the original scroll duration has nothing to do with it (changing the initial velocity changes the amount of time it takes to decelerate).
-     
-     Take the two equations of motion:
-     
-     v = v0 + a*t
-     x = x0 + v0*t + 1/2 * a * t^2
-     
-     Using the firist, with v = 0:
-     
-     t = -v0/a
-     
-     Set d = x - x0 and substitute into the 2nd and simplify:
-     
-     v0 = sqrt(2*d*a)
-     
-     Add a fabs to make sure we don't take the sqrt of a negative number and then restore the correct sign to the velocity (opposite the acceleration) and we are good!
-     
-     */
-        
-    CGFloat d = targetX - ss.x0;
-    
-    CGFloat v0 = sqrt(fabs(2 * d * ss.a));
-    
-    if (!_oppositeSigns(v0, ss.a))
-        v0 = -v0;
-    
-    return v0;
-}
-
-static void _startSmoothScroll(OUIDocumentPickerScrollView *self, CGFloat xVelocity)
-{
-    OUIDocumentPickerScrollViewSmoothScroll *ss = &self->_smoothScroll;
-    _cancelSmoothScroll(ss);
-
-    ss->x0 = self.contentOffset.x;
-    ss->t0 = [NSDate timeIntervalSinceReferenceDate];
-    ss->v0 = xVelocity;
-    ss->a = (ss->v0 < 0) ? kSmoothScrollFriction : -kSmoothScrollFriction; // friction force is in the opposite direction as velocity
-    
-    // Compute an acceleration that will hit the given proxy.
-    NSTimeInterval scrollDuration = _smoothScrollDuration(*ss);
-    CGFloat normalEndX = _smoothScrollXOffsetAfterDuration(*ss, scrollDuration);
-    
-    OUIDocumentProxy *proxy = _proxyWithCenterClosestToContentOffsetX(self, normalEndX);
-
-    DEBUG_SCROLL(@"on proxy %d", [self->_sortedProxies indexOfObjectIdenticalTo:self.proxyClosestToCenter]);
-    DEBUG_SCROLL(@"to proxy %d", [self->_sortedProxies indexOfObjectIdenticalTo:proxy]);
-    
-    DEBUG_SCROLL(@"start scroll:");
-    DEBUG_SCROLL(@"  x0: %f", ss->x0);
-    DEBUG_SCROLL(@"  v0: %f", ss->v0);
-    DEBUG_SCROLL(@"   a: %f", ss->a);
-    DEBUG_SCROLL(@"   t: %f", _smoothScrollDuration(*ss));
-    DEBUG_SCROLL(@"   x: %f", _smoothScrollXOffsetAfterDuration(*ss, _smoothScrollDuration(*ss)));
-    
-    if (proxy == self.proxyClosestToCenter) {
-        // If our scroll won't even get us out of the current proxy, make it more sticky instead of slowly accelerating up to the very edge and then backing up to the center.
-        ss->a *= kBounceFrictionFactor;
-        DEBUG_SCROLL(@"not adjusting (same proxy, normalEndX %f)", normalEndX);
-    } else if (_shouldConstrainOffsetToScrollLimits(self, normalEndX, NULL)) {
-        // If our normal starting animation curve would take us past the ends just run into the edge and bounce back instead of going artificially slow.
-        DEBUG_SCROLL(@"not adjusting (off the edge, normalEndX %f)", normalEndX);
-    } else {
-        CGFloat targetX = _contentOffsetForCenteringProxy(self, proxy).x;
-        
-        ss->v0 = _smoothScrollStartingVelocityToHitOffsetAfterDuration(*ss, targetX);
-        
-        DEBUG_SCROLL(@"adjusted for targetX:%f", targetX);
-        DEBUG_SCROLL(@"  x0: %f", ss->x0);
-        DEBUG_SCROLL(@"  v0: %f", ss->v0);
-        DEBUG_SCROLL(@"   a: %f", ss->a);
-        DEBUG_SCROLL(@"   t: %f", _smoothScrollDuration(*ss));
-        DEBUG_SCROLL(@"   x: %f", _smoothScrollXOffsetAfterDuration(*ss, _smoothScrollDuration(*ss)));
-    }
-
-    OBASSERT(_oppositeSigns(ss->v0, ss->a));
-    
-    // TODO: Use a CFTimerRef?
-    ss->timer = [[NSTimer scheduledTimerWithTimeInterval:1/60.0 target:self selector:@selector(_smoothScrollTimerFired:) userInfo:nil repeats:YES] retain];
-}
-
-- (void)_bounceBackIfNecessary;
-{
-    CGPoint limitOffset;
-    if (_shouldConstrainToScrollLimits(self, &limitOffset)) {
-        [self setContentOffset:limitOffset animated:YES];
-        [_documentSlider setValue:[self.sortedProxies indexOfObject:_proxyWithCenterClosestToContentOffsetX(self, limitOffset.x)]];
-        return;
-    }
-    
-    OUIDocumentProxy *proxy = self.proxyClosestToCenter;
-    if (proxy)
-        [self snapToProxy:proxy animated:YES];
-}
-
-- (void)_smoothScrollTimerFired:(NSTimer *)timer;
-{
-    CFTimeInterval t = [NSDate timeIntervalSinceReferenceDate] - _smoothScroll.t0;
-    
-    // Stop when the friction force has overcome the original velocity, or at least nearly so.
-    CGFloat currentVelocity = _smoothScroll.v0 + _smoothScroll.a*t;
-    if (fabs(currentVelocity) < 1 || _oppositeSigns(currentVelocity, _smoothScroll.v0)) {
-        _cancelSmoothScroll(&_smoothScroll);
-        [self _bounceBackIfNecessary];
-        return;
-    }
-    
-    
-    CGFloat x = _smoothScrollXOffsetAfterDuration(_smoothScroll, t);
-    
-    DEBUG_SCROLL(@"t:%f / %f x:%f v0:%f vt:%f (b:%d)", t, _smoothScrollDuration(_smoothScroll), x, _smoothScroll.v0, currentVelocity, _smoothScroll.bouncing);
-    self.contentOffset = CGPointMake(x, 0);
-
-    // If this position puts us off the edge of the scrollable area, then we need to start to bounce back. First we need to slow down faster so we don't overshoot so much.
-    OUIDocumentPickerScrollViewSmoothScroll *ss = &self->_smoothScroll;
-    if (!ss->bouncing && _shouldConstrainToScrollLimits(self, NULL)) {        
-        // Restart the smooth scroll from our current position/velocity, but with a higher acceleration so that we slow down faster.
-        ss->bouncing = YES;
-        
-        ss->x0 = self.contentOffset.x;
-        ss->t0 = [NSDate timeIntervalSinceReferenceDate];
-        ss->v0 = currentVelocity;
-        ss->a *= kBounceFrictionFactor;
-
-        if (!_oppositeSigns(ss->v0, ss->a))
-            ss->a = -ss->a;
-        
-        DEBUG_SCROLL(@"BOUNCE:");
-        DEBUG_SCROLL(@"  x0: %f", ss->x0);
-        DEBUG_SCROLL(@"  v0: %f", ss->v0);
-        DEBUG_SCROLL(@"   a: %f", ss->a);
-        DEBUG_SCROLL(@"   t: %f", _smoothScrollDuration(*ss));
-        DEBUG_SCROLL(@"   x: %f", _smoothScrollXOffsetAfterDuration(*ss, _smoothScrollDuration(*ss)));
-    }
-}
-
-- (void)_handlePickerPanGesture:(UIPanGestureRecognizer *)gestureRecognizer;
-{
-    OBPRECONDITION(_smoothScroll.timer == nil);
-    _cancelSmoothScroll(&_smoothScroll); // just in case...
-    
-    /*
-     
-     Smooth scrolling normally happens via:
-     #1  0x004788fc in -[UIScrollView(Static) _smoothScroll:] ()
-     #2  0x004722ea in ScrollerHeartbeatCallback ()
-     #3  0x03209d92 in HeartbeatTimerCallback ()
-     
-     The reported velocity is the delta between the last two moves, or maybe a few more.  It doesn't matter how long ago those moves were! In a normal scroll setup, if you tap, swipe really quick and stop and hold (so your last delta is huge) and then stop touching the screen, the velocity will start a scroll.
-     
-     */
-    
-    if (_disableScroll)
-        return;
-
-    UIGestureRecognizerState state = gestureRecognizer.state;
-    
-    if (state == UIGestureRecognizerStateBegan)
-        _contentOffsetOnPanStart = self.contentOffset;
-    if (state == UIGestureRecognizerStateBegan || state == UIGestureRecognizerStateChanged) {
-        CGPoint scrolledOffset = _contentOffsetOnPanStart;
-        
-        scrolledOffset.x -= [gestureRecognizer translationInView:self].x;
-        self.contentOffset = _handleOverpull(self, scrolledOffset);
-        DEBUG_SCROLL(@"drag %@", NSStringFromPoint(self.contentOffset));
-    }
-    if (state == UIGestureRecognizerStateEnded) {
-        CGFloat xVelocity = -kVelocityScale * [gestureRecognizer velocityInView:self].x;
-        if (fabs(xVelocity) > kMinimumVelocityToStartDeceleration) {
-            _startSmoothScroll(self, xVelocity);
-        } else {
-            // Make sure that if we finish touching while we are pulled past our limit that we rebound.
-            [self _bounceBackIfNecessary];
-        }
-    }
 }
 
 - initWithFrame:(CGRect)frame;
@@ -386,11 +137,15 @@ static void _startSmoothScroll(OUIDocumentPickerScrollView *self, CGFloat xVeloc
 
 - (void)dealloc;
 {    
-    [_documentSlider release];
-    _cancelSmoothScroll(&_smoothScroll);
-    [_sortedProxies release];
-    [_proxies release];
-    [_proxyViews release];
+    [_sortedItems release];
+    [_items release];
+    [_itemsBeingAdded release];
+    [_itemViewsForPreviousOrientation release];
+    [_fileItemViews release];
+    [_groupItemViews release];
+    [_draggingDestinationItem release];
+    [_itemsIgnoredForLayout release];
+    
     [super dealloc];
 }
 
@@ -402,417 +157,701 @@ static void _startSmoothScroll(OUIDocumentPickerScrollView *self, CGFloat xVeloc
 - (void)setDelegate:(id <OUIDocumentPickerScrollViewDelegate>)delegate;
 {
     OBPRECONDITION(!delegate || [delegate conformsToProtocol:@protocol(OUIDocumentPickerScrollViewDelegate)]);
+
     [super setDelegate:delegate];
 }
 
-@synthesize disableLayout = _disableLayout;
+/*
+ This and -didRotate can be called to perform an animated swap of item views between their current and new orientation (in -setLandscape:).
+ If this is not called around a call to -setLandscape:, then the change is assumed to be taking place off screen and will be unanimated.
+ */
 
-@synthesize bottomGap = _bottomGap;
-- (void)setBottomGap:(CGFloat)bottomGap;
-{
-    _bottomGap = bottomGap;
-    [self setNeedsLayout];
-}
-
-@synthesize proxies = _proxies;
-
-- (NSArray *)_sortDescriptors;
-{
-    NSMutableArray *descriptors = [NSMutableArray array];
-    
-    if (_proxySort == OUIDocumentProxySortByDate) {
-        NSSortDescriptor *dateSort = [[NSSortDescriptor alloc] initWithKey:@"date" ascending:NO];
-        [descriptors addObject:dateSort];
-        [dateSort release];
-    }
-    
-    NSSortDescriptor *nameSort = [[NSSortDescriptor alloc] initWithKey:@"name" ascending:YES selector:@selector(localizedCaseInsensitiveCompare:)];
-    [descriptors addObject:nameSort];
-    [nameSort release];
-    
-    /* url doesn't implement compare:, causes crash
-    NSSortDescriptor *urlSort = [[NSSortDescriptor alloc] initWithKey:@"url" ascending:YES];
-    [descriptors addObject:urlSort];
-    [urlSort release];
-    */
-    return descriptors;
-}
-
-- (void)sortProxies;
-{
-    OBASSERT(_proxies);
-    if (!_proxies)
-        return;
-    
-    NSArray *newSort = [[_proxies allObjects] sortedArrayUsingDescriptors:[self _sortDescriptors]];
-    [_sortedProxies release];
-    _sortedProxies = [newSort copy];
-}
-
-- (void)setProxies:(NSSet *)proxies;
-{
-    [_proxies release];
-    _proxies = [[NSMutableSet alloc] initWithSet:proxies];
-    
-    [self sortProxies];
-    
-    [_documentSlider setCount:[_proxies count]];
-
-    [self setNeedsLayout];
-}
-
-- (void)setProxySort:(OUIDocumentProxySort)_sort;
-{
-    _proxySort = _sort;
-    
-    if (_proxies != nil) {
-        [self sortProxies];
-        [self setNeedsLayout];
-    }
-}
-
-@synthesize sortedProxies = _sortedProxies;
-@synthesize proxySort = _proxySort;
-
-- (OUIDocumentProxy *)firstProxy;
-{
-    if ([_sortedProxies count] > 0)
-        return [_sortedProxies objectAtIndex:0];
-    return nil;
-}
-
-- (OUIDocumentProxy *)lastProxy;
-{
-    return [_sortedProxies lastObject];
-}
-
-- (OUIDocumentProxy *)proxyClosestToCenter;
-{
-    return _proxyWithCenterClosestToContentOffsetX(self, self.contentOffset.x);
-}
-
-- (OUIDocumentProxy *)proxyToLeftOfProxy:(OUIDocumentProxy *)proxy;
-{
-    if (!proxy)
-        return nil; // empty?
-    NSUInteger proxyIndex = [_sortedProxies indexOfObjectIdenticalTo:proxy];
-    OBASSERT(proxyIndex != NSNotFound);
-    return (proxyIndex == 0 || proxyIndex == NSNotFound) ? nil : [_sortedProxies objectAtIndex:proxyIndex - 1];
-}
-
-- (OUIDocumentProxy *)proxyToRightOfProxy:(OUIDocumentProxy *)proxy;
-{
-    if (!proxy)
-        return nil; // empty?
-    NSUInteger proxyIndex = [_sortedProxies indexOfObjectIdenticalTo:proxy];
-    OBASSERT(proxyIndex != NSNotFound);
-    return (proxyIndex == [_sortedProxies count] - 1 || proxyIndex == NSNotFound) ? nil : [_sortedProxies objectAtIndex:proxyIndex + 1];
-}
-
-- (void)snapToProxy:(OUIDocumentProxy *)proxy animated:(BOOL)animated;
-{
-    if (!proxy)
-        return;
-    
-    [self layoutIfNeeded];
-    [self setContentOffset:_contentOffsetForCenteringProxy(self, proxy) animated:animated];
-    [self setNeedsLayout];
-    [self layoutIfNeeded];
-    
-    [_documentSlider setValue:[self.sortedProxies indexOfObject:proxy]];
-}
-
-- (IBAction)documentSliderAction:(OUIDocumentSlider *)slider;
-{
-    OUIDocumentProxy *proxy = [self.sortedProxies objectAtIndex:[slider value]];
-    [self layoutIfNeeded];
-    [self setContentOffset:_contentOffsetForCenteringProxy(self, proxy) animated:NO];
-    [self setNeedsLayout];
-    [self layoutIfNeeded];    
-}
-
-// The selected flag is set by layout based on our scroll position. There should be exactly one selected proxy unless we are empty.
-- (OUIDocumentProxy *)selectedProxy;
-{
-    OUIDocumentProxy *selectedProxy = nil;
-
-    for (OUIDocumentProxy *proxy in _proxies) {
-        if (proxy.selected) {
-            OBASSERT(!selectedProxy);
-            selectedProxy = proxy;
-        }
-    }
-    
-    OBASSERT(selectedProxy != nil || [_proxies count] == 0);
-    return selectedProxy;
-}
-
-// Called by OUIDocumentPicker when the interface orientation changes.
 - (void)willRotate;
 {
-    OBPRECONDITION(_flags.isRotating == NO);
-
-    // This will cause us to discard speculatively loaded previews (and not rebuild them).
-    _flags.isRotating = YES;
-    [self layoutSubviews];
-    if (_disableRotationDisplay)
-        return;
+    OBPRECONDITION(self.window); // No point in animating while off screen.
+    OBPRECONDITION(_flags.isAnimatingRotationChange == NO);
     
-    // Fade the previews out; make *all* our views go to zero alpha so that that is where they are for the -didRotate call (in case a different set of views is visible when fading in).
-    [UIView beginAnimations:@"fade out proxies before rotation" context:NULL];
+    DEBUG_LAYOUT(@"willRotate");
+    
+    _flags.isAnimatingRotationChange = YES;
+    
+    // Fade out old item views, preparing for a whole new array in the -setGridSize:
+    OBASSERT(_itemViewsForPreviousOrientation == nil);
+    OBASSERT(_fileItemViews != nil);
+    OBASSERT(_groupItemViews != nil);
+    [_itemViewsForPreviousOrientation release];
+    _itemViewsForPreviousOrientation = [[_fileItemViews arrayByAddingObjectsFromArray:_groupItemViews] retain];
+    
+    [_fileItemViews release];
+    _fileItemViews = nil;
+    [_groupItemViews release];
+    _groupItemViews = nil;
+    
+    // Elevate the old previews above the new ones that will be made
+    for (OUIDocumentPickerItemView *itemView in _itemViewsForPreviousOrientation) {
+        itemView.gestureRecognizers = nil;
+        itemView.layer.zPosition = 1;
+    }
+    
+    // ... and fade them out, exposing the new ones
+    [UIView beginAnimations:nil context:NULL];
     {
-        for (OUIDocumentProxyView *view in _proxyViews)
-            view.alpha = 0;
+        for (OUIDocumentPickerItemView *itemView in _itemViewsForPreviousOrientation) {
+            if (itemView.hidden == NO)
+                itemView.alpha = 0;
+        }
     }
     [UIView commitAnimations];
 }
 
 - (void)didRotate;
 {
-    OBPRECONDITION(_flags.isRotating == YES);
-
-    // Allow speculative preview loading.  Don't care if we lay out immediately.
-    _flags.isRotating = NO;
-    [self setNeedsLayout];
-    if (_disableRotationDisplay)
-        return;
+    OBPRECONDITION(self.window); // No point in animating while off screen.
+    OBPRECONDITION(_flags.isAnimatingRotationChange == YES);
     
-    // We assume the caller has done a non-animating layout and scroll snap for the new orientation. Fade stuff back in.
-    [UIView beginAnimations:@"fade in proxies after rotation" context:NULL];
-    {
-        for (OUIDocumentProxyView *view in _proxyViews)
-            view.alpha = 1;
+    DEBUG_LAYOUT(@"didRotate");
+    
+    // Tell the new views we are done with the rotation
+    if (_flags.isAnimatingRotationChange) {
+        for (OUIDocumentPickerItemView *itemView in _fileItemViews)
+            itemView.animatingRotationChange = YES;
+        for (OUIDocumentPickerItemView *itemView in _groupItemViews)
+            itemView.animatingRotationChange = YES;
     }
-    [UIView commitAnimations];
+
+    _flags.isAnimatingRotationChange = NO;
+    
+    // Ditch the old fully faded previews 
+    OUIWithoutAnimating(^{
+        for (OUIDocumentPickerItemView *view in _itemViewsForPreviousOrientation)
+            [view removeFromSuperview];
+        [_itemViewsForPreviousOrientation release];
+        _itemViewsForPreviousOrientation = nil;
+    });
 }
 
-@synthesize disableRotationDisplay = _disableRotationDisplay;
-@synthesize disableScroll = _disableScroll;
+static NSUInteger _itemViewsForGridSize(CGSize gridSize)
+{
+    OBPRECONDITION(gridSize.width == rint(gridSize.width));
+    
+    NSUInteger width = ceil(gridSize.width);
+    NSUInteger height = ceil(gridSize.height + 1.0); // partial row scrolled off the top, partial row off the bottom
+    
+    return width * height;
+}
+
+static NSArray *_newItemViews(OUIDocumentPickerScrollView *self, Class itemViewClass)
+{
+    OBASSERT(OBClassIsSubclassOfClass(itemViewClass, [OUIDocumentPickerItemView class]));
+    OBASSERT(itemViewClass != [OUIDocumentPickerItemView class]);
+    
+    NSMutableArray *itemViews = [[NSMutableArray alloc] init];
+
+    NSUInteger neededItemViewCount = _itemViewsForGridSize([[self class] _gridSizeForLandscape:self->_landscape]);
+    while (neededItemViewCount--) {
+        OUIDocumentPickerItemView *itemView = [[itemViewClass alloc] initWithFrame:CGRectMake(0, 0, 1, 1)];
+        itemView.landscape = self->_landscape;
+        
+        [itemViews addObject:itemView];
+        
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(_itemViewTapped:)];
+        [itemView addGestureRecognizer:tap];
+        [tap release];
+        
+        itemView.hidden = YES;
+        [self addSubview:itemView];
+        [itemView release];
+    }
+    
+    NSArray *result = [itemViews copy];
+    [itemViews release];
+    return result;
+}
+
+@synthesize landscape = _landscape;
+- (void)setLandscape:(BOOL)landscape;
+{
+    if (_fileItemViews && _groupItemViews && _landscape == landscape)
+        return;
+    
+    DEBUG_LAYOUT(@"setLandscape:%d", landscape);
+
+    _landscape = landscape;
+    
+    if (_flags.isAnimatingRotationChange) {
+        OBASSERT(self.window);
+        // We are on screen and rotating, so -willRotate should have been called. Still, we'll try to handle this reasonably below.
+        OBASSERT(_fileItemViews == nil);
+        OBASSERT(_groupItemViews == nil);
+    } else {
+        // The device was rotated while our view controller was off screen. It doesn't get told about the rotation in that case and we just get a landscape change.
+        OBASSERT(self.window == nil);
+    }
+    
+    // Make the new views (which will start out hidden).
+    OUIWithoutAnimating(^{
+        [_fileItemViews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+        [_fileItemViews release];
+        _fileItemViews = _newItemViews(self, [OUIDocumentPickerFileItemView class]);
+        
+        [_groupItemViews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+        [_groupItemViews release];
+        _groupItemViews = _newItemViews(self, [OUIDocumentPickerGroupItemView class]);
+        
+        // Tell the new views that they shouldn't animate layout, if we are rotating.
+        // We do want to fade them in, though.
+        if (_flags.isAnimatingRotationChange) {
+            for (OUIDocumentPickerItemView *itemView in _fileItemViews) {
+                itemView.animatingRotationChange = YES;
+                itemView.alpha = 0;
+            }
+            for (OUIDocumentPickerItemView *itemView in _groupItemViews) {
+                itemView.animatingRotationChange = YES;
+                itemView.alpha = 0;
+            }
+        }
+    });
+    
+    // Now fade in the views (at least the ones that have their hidden flag cleared on the next layout).
+    if (_flags.isAnimatingRotationChange && [UIView areAnimationsEnabled]) {
+        [UIView beginAnimations:nil context:NULL];
+        {
+            for (OUIDocumentPickerItemView *itemView in _fileItemViews) {
+                itemView.alpha = 1;
+            }
+            for (OUIDocumentPickerItemView *itemView in _groupItemViews) {
+                itemView.alpha = 1;
+            }
+        }
+        [UIView commitAnimations];
+    }
+    
+    [self setNeedsLayout];
+}
+
+@synthesize items = _items;
+
+- (void)startAddingItems:(NSSet *)toAdd;
+{
+    OBPRECONDITION([toAdd intersectsSet:_items] == NO);
+    OBPRECONDITION([toAdd intersectsSet:_itemsBeingAdded] == NO);
+
+    [_items unionSet:toAdd];
+    [_itemsBeingAdded unionSet:toAdd];
+    
+    [self sortItems];
+    [self setNeedsLayout];
+}
+
+- (void)finishAddingItems:(NSSet *)toAdd;
+{
+    OBPRECONDITION([toAdd isSubsetOfSet:_items]);
+    OBPRECONDITION([toAdd isSubsetOfSet:_itemsBeingAdded]);
+
+    OBFinishPortingLater("Set them up to zoom in");
+    [_itemsBeingAdded minusSet:toAdd];
+    
+    for (OFSDocumentStoreItem *item in toAdd) {
+        OUIDocumentPickerItemView *itemView = [self itemViewForItem:item];
+        OBASSERT(!itemView || itemView.shrunken);
+        itemView.shrunken = NO;
+    }
+}
+
+- (void)startRemovingItems:(NSSet *)toRemove;
+{
+    OBPRECONDITION([toRemove isSubsetOfSet:_items]);
+
+    for (OFSDocumentStoreItem *item in toRemove) {
+        OUIDocumentPickerItemView *itemView = [self itemViewForItem:item];
+        itemView.shrunken = YES;
+    }
+}
+
+- (void)finishRemovingItems:(NSSet *)toRemove;
+{
+    OBPRECONDITION([toRemove isSubsetOfSet:_items]);
+
+    for (OFSDocumentStoreItem *item in toRemove) {
+        OUIDocumentPickerItemView *itemView = [self itemViewForItem:item];
+        OBASSERT(!itemView || itemView.shrunken);
+        itemView.shrunken = NO;
+    }
+
+    [_items minusSet:toRemove];
+    [self sortItems]; // The order hasn't changed, but w/o this the sorted array would still have the removed items
+    
+    [self setNeedsLayout];
+}
+
+- (NSArray *)_sortDescriptors;
+{
+    NSMutableArray *descriptors = [NSMutableArray array];
+    
+    if (_itemSort == OUIDocumentPickerItemSortByDate) {
+        NSSortDescriptor *dateSort = [[NSSortDescriptor alloc] initWithKey:OFSDocumentStoreItemDateBinding ascending:NO];
+        [descriptors addObject:dateSort];
+        [dateSort release];
+        
+        // fall back to name sorting if the dates are equal
+    }
+    
+    NSSortDescriptor *nameSort = [[NSSortDescriptor alloc] initWithKey:OFSDocumentStoreItemNameBinding ascending:YES selector:@selector(localizedStandardCompare:)];
+    [descriptors addObject:nameSort];
+    [nameSort release];
+    
+    return descriptors;
+}
+
+- (void)sortItems;
+{
+    OBASSERT(_items);
+    if (!_items)
+        return;
+    
+    NSArray *newSort = [[_items allObjects] sortedArrayUsingDescriptors:[self _sortDescriptors]];
+    if (OFNOTEQUAL(newSort, _sortedItems)) {
+        [_sortedItems release];
+        _sortedItems = [newSort copy];
+        [self setNeedsLayout];
+    }
+}
+
+- (void)setEditing:(BOOL)editing animated:(BOOL)animated;
+{
+    _flags.isEditing = editing;
+    
+    for (OUIDocumentPickerItemView *itemView in _fileItemViews)
+        [itemView setEditing:editing animated:animated];
+    for (OUIDocumentPickerItemView *itemView in _groupItemViews)
+        [itemView setEditing:editing animated:animated];
+}
+
+- (void)setItemSort:(OUIDocumentPickerItemSort)_sort;
+{
+    _itemSort = _sort;
+    [self sortItems];
+}
+
+@synthesize sortedItems = _sortedItems;
+@synthesize itemSort = _itemSort;
+
+@synthesize draggingDestinationItem = _draggingDestinationItem;
+- (void)setDraggingDestinationItem:(id)draggingDestinationItem;
+{
+    if (_draggingDestinationItem == draggingDestinationItem)
+        return;
+    [_draggingDestinationItem release];
+    _draggingDestinationItem = [draggingDestinationItem retain];
+    
+    [self setNeedsLayout];
+}
+
+static CGPoint _contentOffsetForCenteringItem(OUIDocumentPickerScrollView *self, CGRect itemFrame)
+{
+    return CGPointMake(-kEdgeInsets.left, floor(CGRectGetMidY(itemFrame) - self.bounds.size.height / 2));
+}
+
+- (void)scrollItemToVisible:(OFSDocumentStoreItem *)item animated:(BOOL)animated;
+{
+    if (!item)
+        return;
+    
+    [self layoutIfNeeded];
+
+    CGRect itemFrame = [self frameForItem:item];
+    
+    CGPoint contentOffset = self.contentOffset;
+    CGRect bounds = self.bounds;
+    
+    CGRect contentRect;
+    contentRect.origin = contentOffset;
+    contentRect.size = bounds.size;
+
+    if (CGRectContainsRect(contentRect, itemFrame))
+        return;
+
+    CGSize contentSize = self.contentSize;
+    CGPoint clampedContentOffset = _clampContentOffset(_contentOffsetForCenteringItem(self, itemFrame), bounds, contentSize);
+
+    if (!CGPointEqualToPoint(contentOffset, clampedContentOffset)) {
+        [self setContentOffset:clampedContentOffset animated:animated];
+        [self setNeedsLayout];
+        [self layoutIfNeeded];
+    }
+}
+
+- (CGRect)frameForItem:(OFSDocumentStoreItem *)item;
+{
+    LayoutInfo layoutInfo = _updateLayout(self);
+    CGSize itemSize = layoutInfo.itemSize;
+    NSUInteger itemsPerRow = layoutInfo.itemsPerRow;
+
+    if (itemSize.width <= 0 || itemSize.height <= 0) {
+        // We aren't sized right yet
+        OBASSERT_NOT_REACHED("Asking for the frame of an item before we are laid out.");
+        return CGRectZero;
+    }
+
+    NSUInteger positionIndex;
+    if ([_itemsIgnoredForLayout count] > 0) {
+        positionIndex = NSNotFound;
+        
+        NSUInteger itemIndex = 0;
+        for (OFSDocumentStoreItem *sortedItem in _sortedItems) {
+            if ([_itemsIgnoredForLayout member:sortedItem])
+                continue;
+            if (sortedItem == item) {
+                positionIndex = itemIndex;
+                break;
+            }
+            itemIndex++;
+        }
+    } else {
+        positionIndex = [_sortedItems indexOfObjectIdenticalTo:item];
+    }
+    
+    if (positionIndex == NSNotFound) {
+        OBASSERT_NOT_REACHED("Asking for the frame of an item that is unknown/ignored");
+        return CGRectZero;
+    }
+
+    return _frameForPositionAtIndex(positionIndex, itemSize, itemsPerRow);
+}
+
+- (OUIDocumentPickerItemView *)itemViewForItem:(OFSDocumentStoreItem *)item;
+{
+    for (OUIDocumentPickerFileItemView *itemView in _fileItemViews) {
+        if (itemView.item == item)
+            return itemView;
+    }
+
+    for (OUIDocumentPickerGroupItemView *itemView in _groupItemViews) {
+        if (itemView.item == item)
+            return itemView;
+    }
+    
+    return nil;
+}
+
+- (OUIDocumentPickerFileItemView *)fileItemViewForFileItem:(OFSDocumentStoreFileItem *)fileItem;
+{
+    for (OUIDocumentPickerFileItemView *fileItemView in _fileItemViews) {
+        if (fileItemView.item == fileItem)
+            return fileItemView;
+    }
+    
+    return nil;
+}
+
+// We don't use -[UIGestureRecognizer(OUIExtensions) hitView] or our own -hitTest: since while we are in the middle of dragging, extra item views will be added to us by the drag session.
+static OUIDocumentPickerItemView *_itemViewHitInPreviewAreaByRecognizer(NSArray *itemViews, UIGestureRecognizer *recognizer)
+{
+    for (OUIDocumentPickerItemView *itemView in itemViews) {
+        OUIDocumentPreviewView *previewView = itemView.previewView;
+        UIView *hitView = [previewView hitTest:[recognizer locationInView:previewView] withEvent:nil];
+        if (hitView)
+            return itemView;
+    }
+    return nil;
+}
+
+- (OUIDocumentPickerItemView *)itemViewHitInPreviewAreaByRecognizer:(UIGestureRecognizer *)recognizer;
+{
+    OUIDocumentPickerItemView *itemView = _itemViewHitInPreviewAreaByRecognizer(_fileItemViews, recognizer);
+    if (itemView)
+        return itemView;
+    return _itemViewHitInPreviewAreaByRecognizer(_groupItemViews, recognizer);
+}
+
+- (OUIDocumentPickerFileItemView *)fileItemViewHitInPreviewAreaByRecognizer:(UIGestureRecognizer *)recognizer;
+{
+    return (OUIDocumentPickerFileItemView *)_itemViewHitInPreviewAreaByRecognizer(_fileItemViews, recognizer);
+}
+
+- (void)previewsUpdatedForFileItem:(OFSDocumentStoreFileItem *)fileItem;
+{
+    for (OUIDocumentPickerFileItemView *fileItemView in _fileItemViews) {
+        if (fileItemView.item == fileItem) {
+            [fileItemView previewsUpdated];
+            return;
+        }
+    }
+    
+    for (OUIDocumentPickerGroupItemView *groupItemView in _groupItemViews) {
+        OFSDocumentStoreGroupItem *groupItem = (OFSDocumentStoreGroupItem *)groupItemView.item;
+        if ([groupItem.fileItems member:fileItem]) {
+            [groupItemView previewsUpdated];
+            return;
+        }
+    }
+}
+
+- (void)startIgnoringItemForLayout:(OFSDocumentStoreItem *)item;
+{
+    OBASSERT(!([_itemsIgnoredForLayout containsObject:item]));
+    [_itemsIgnoredForLayout addObject:item];
+}
+
+- (void)stopIgnoringItemForLayout:(OFSDocumentStoreItem *)item;
+{
+    OBASSERT([_itemsIgnoredForLayout containsObject:item]);
+    [_itemsIgnoredForLayout removeObject:item];
+}
 
 #pragma mark -
 #pragma mark UIView
 
-// UIScrollView would presumably use -touchesShouldBegin:withEvent:inContentView: for this, but with our having turned off its gesture recognizers, it doesn't.  So, if we have an smooth scroll going, we'll pretend the content views are invisible to taps.
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event;
-{
-    UIView *hit = [super hitTest:point withEvent:event];
+static LayoutInfo _updateLayout(OUIDocumentPickerScrollView *self)
+{    
+    CGSize gridSize = [[self class] _gridSizeForLandscape:self->_landscape];
+    OBASSERT(gridSize.width >= 1);
+    OBASSERT(gridSize.width == trunc(gridSize.width));
+    OBASSERT(gridSize.height >= 1);
     
-    if (_smoothScroll.timer && [hit isDescendantOfView:self])
-        return self;
-    return hit;
+    NSUInteger itemsPerRow = gridSize.width;
+    
+    // Calculate the item size we'll use. The results of this can be non-integral, allowing for accumulated round-off
+    
+    // Don't compute the item size based off our bounds. If the keyboard comes up we don't want our items to get smaller!
+    CGSize layoutSize;
+    {
+        OUIMainViewController *mainViewController = [[OUISingleDocumentAppController controller] mainViewController];
+        OUIMainViewControllerBackgroundView *layoutReferenceView = (OUIMainViewControllerBackgroundView *)mainViewController.view;
+        CGRect layoutRect = [layoutReferenceView contentViewFullScreenBounds]; // Excludes the toolbar, but doesn't exclude the keyboard
+        
+        // We can get asked to lay out before we are in the view hierarchy, which will cause assertions to fire in this conversion. We don't expect to ever have a scaling applied, so since we just want the size, this works. Still would be nice to do the convertRect:fromView:...
+        //layoutRect = [self convertRect:layoutRect fromView:layoutReferenceView];
+        
+        layoutSize = CGSizeMake(layoutRect.size.width - kEdgeInsets.left - kEdgeInsets.right, layoutRect.size.height - kEdgeInsets.top); // Don't subtract kEdgeInsets.bottom since the previews scroll off the bottom of the screen
+    }
+    
+    CGSize itemSize;
+    {
+        // We may need to accumulate partial pixels to make the spacing as even as possible in width, so we only ceil the height (which we don't need to do such accumulation and which we *do* need to be integral to make it easier to determine the full content size).
+        itemSize.width = (layoutSize.width - (itemsPerRow - 1) * kItemHorizontalPadding) / gridSize.width;
+        itemSize.height = ceil((layoutSize.height - (floor(gridSize.height) * kItemVerticalPadding)) / gridSize.height);
+    }
+    
+    DEBUG_LAYOUT(@"%@ Laying out %ld items with size %@", [self shortDescription], [self->_items count], NSStringFromCGSize(itemSize));
+    
+    if (itemSize.width <= 0 || itemSize.height <= 0) {
+        // We aren't sized right yet
+        DEBUG_LAYOUT(@"  Bailing since we have zero size");
+        LayoutInfo layoutInfo;
+        memset(&layoutInfo, 0, sizeof(layoutInfo));
+        return layoutInfo;
+    }
+    
+    
+    CGRect contentRect;
+    {
+        NSUInteger itemCount = [self->_sortedItems count];
+        NSUInteger rowCount = (itemCount / itemsPerRow) + ((itemCount % itemsPerRow) == 0 ? 0 : 1);
+        
+        CGRect bounds = self.bounds;
+        CGSize contentSize = CGSizeMake(layoutSize.width, itemSize.height * rowCount + kItemVerticalPadding * (rowCount - 1));
+        
+        self.contentSize = contentSize;
+        self.contentInset = kEdgeInsets;
+        
+        // Now, clamp the content offset. This can get out of bounds if we are scrolled way to the end in portait mode and flip to landscape.
+        
+        //        NSLog(@"self.bounds = %@", NSStringFromCGRect(bounds));
+        //        NSLog(@"self.contentSize = %@", NSStringFromCGSize(contentSize));
+        //        NSLog(@"self.contentOffset = %@", NSStringFromCGPoint(self.contentOffset));
+        
+        CGPoint contentOffset = self.contentOffset;
+        CGPoint clampedContentOffset = _clampContentOffset(contentOffset, bounds, contentSize);
+        if (!CGPointEqualToPoint(contentOffset, clampedContentOffset))
+            self.contentOffset = contentOffset; // Don't reset if it is the same, or this'll kill off any bounce animation
+        
+        contentRect.origin = contentOffset;
+        contentRect.size = bounds.size;
+        DEBUG_LAYOUT(@"contentRect = %@", NSStringFromCGRect(contentRect));
+    }
+    
+    return (LayoutInfo){
+        .contentRect = contentRect,
+        .itemSize = itemSize,
+        .itemsPerRow = itemsPerRow
+    };
 }
 
-// We do our own pagination. UIScrollView's pagination is in even bounds sized blocks. This means that if we put on preview on each page, you can only see a single preview at a time.  We want to at least be able to see the edges of the neighboring previews and also don't want to have to pan across all the empty space.
 - (void)layoutSubviews;
 {
-    if (_disableLayout)
-        return;
+    LayoutInfo layoutInfo = _updateLayout(self);
+    CGSize itemSize = layoutInfo.itemSize;
+    CGRect contentRect = layoutInfo.contentRect;
+    NSUInteger itemsPerRow = layoutInfo.itemsPerRow;
     
-    [super layoutSubviews];
-    
-    const CGRect bounds = self.bounds;
-
-    const CGFloat kProxySpacing = 32;
-    const CGFloat kNeighborWidthVisible = 120;
-    const CGFloat kTopGap = 40;
-    const CGFloat kMinimumProxyWidth = 300;
-    
-    const CGFloat maximumHeight = CGRectGetHeight(bounds) - (_bottomGap + kTopGap);
-    const CGFloat maximumWidth = CGRectGetWidth(bounds) - 2*kProxySpacing - kNeighborWidthVisible;
-
-    DEBUG_LAYOUT(@"Laying out proxies in %@ with maximum size %@", [self shortDescription], NSStringFromCGSize(CGSizeMake(maximumWidth, maximumHeight)));
-    
-    if (maximumHeight <= 0 || maximumWidth <= 0) {
+    if (itemSize.width <= 0 || itemSize.height <= 0) {
         // We aren't sized right yet
-        _flags.needsRecentering = YES;
+        DEBUG_LAYOUT(@"  Bailing since we have zero size");
         return;
     }
 
-    CGRect contentRect;
-    contentRect.origin = self.contentOffset;
-    contentRect.size = bounds.size;
-    
-    // Keep track of which proxy views are in use by visible proxies.
-    NSMutableArray *unusedProxyViews = [[NSMutableArray alloc] initWithArray:_proxyViews];
-    
-    // Keep track of proxies that don't have views that need them.
-    NSMutableArray *visibleProxiesWithoutView = nil;
-    NSMutableArray *nearlyVisibleProxiesWithoutView = nil;
-    
-    CGFloat firstProxyWidth = 0, lastProxyWidth = 0;
-    CGFloat xOffset = 0;
-    BOOL inLandscape = bounds.size.width >= bounds.size.height;
-    for (OUIDocumentProxy *proxy in _sortedProxies) {
-        DEBUG_LAYOUT(@"proxy %@, preview = %@", proxy.name, [(id)proxy.currentPreview shortDescription]);
+    // We don't need this for the scroller and calling it causes our item views to layout their contents out before we've adjusted their frames (and we don't even want to layout the hidden views).
+    // [super layoutSubviews];
 
-        CGSize previewSize = [proxy previewSizeForTargetSize:CGSizeMake(maximumWidth, maximumHeight) inLandscape:inLandscape];
+    // The newly created views need to get laid out the first time w/o animation on.
+    OUIWithAnimationsDisabled(_flags.isAnimatingRotationChange, ^{
+        // Keep track of which item views are in use by visible items
+        NSMutableArray *unusedFileItemViews = [[NSMutableArray alloc] initWithArray:_fileItemViews];
+        NSMutableArray *unusedGroupItemViews = [[NSMutableArray alloc] initWithArray:_groupItemViews];
         
-        DEBUG_LAYOUT(@"  previewSize %@", NSStringFromCGSize(previewSize));
-
-        if (firstProxyWidth == 0)
-            firstProxyWidth = MAX(previewSize.width, kMinimumProxyWidth);
-        else
-            xOffset += kProxySpacing;
+        // Keep track of items that don't have views that need them.
+        NSMutableArray *visibleItemsWithoutView = nil;
+        NSUInteger positionIndex = 0;
         
-        lastProxyWidth = MAX(previewSize.width, kMinimumProxyWidth);
-        
-        // Store the frame on the proxy view controller itself. It will propagate to its view when loaded. This lets us do geometry queries on proxies that don't have their view loaded or scrolled into view.
-        CGFloat additialOffset = (previewSize.width < kMinimumProxyWidth) ? floor((kMinimumProxyWidth-previewSize.width)/2) : 0;
-        xOffset += additialOffset;
-        
-        CGRect frame = CGRectMake(xOffset, kTopGap + (maximumHeight - previewSize.height) / 2,
-                                  previewSize.width, previewSize.height);
-        
-        // CGRectIntegral can make the rect bigger when the size is integral but the position is fractional. We want the size to remain the same.
-        CGRect integralFrame;
-        integralFrame.origin.x = floor(frame.origin.x);
-        integralFrame.origin.y = floor(frame.origin.y);
-        integralFrame.size = frame.size;
-        frame = CGRectIntegral(integralFrame);
-        
-        // If this proxy has a fixed size preview, shrink the rect to fit the preview. This lets us take up the same space (we advance based on 'frame'), but also lets us position the shadows and selection gray view in the preview correctly.
-        if (!proxy.preview.scalable) {
-            UIImage *image = [OUIDocumentProxyView placeholderPreviewImage];
-            CGSize imageSize = image.size;
-            CGPoint center = CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame));
-            CGRect imageRect = CGRectMake(floor(center.x - imageSize.width/2),
-                                          floor(center.y - imageSize.height / 2),
-                                          imageSize.width, imageSize.height);
-            proxy.frame = imageRect;
-            DEBUG_LAYOUT(@"  assigned image frame %@ based on %@", NSStringFromCGRect(imageRect), NSStringFromCGRect(frame));
-        } else {
-            proxy.frame = frame;
-            DEBUG_LAYOUT(@"  assigned frame %@", NSStringFromCGRect(frame));
-        }
-        
-        BOOL proxyVisible = CGRectIntersectsRect(frame, contentRect);
-        OUIDocumentProxyView *proxyView = proxy.view;
-        
-        if (!proxyVisible) {
-            CGFloat centerDistance = fabs(CGRectGetMidX(contentRect) - CGRectGetMidX(frame));
-            BOOL nearlyVisible = (centerDistance / CGRectGetWidth(contentRect) < 1.5); // half the current screen (center to edge) and then one more screen over.
+        for (OFSDocumentStoreItem *item in _sortedItems) {        
+            // Calculate the frame we would use for each item.
+            DEBUG_LAYOUT(@"item (%ld,%ld) %@", row, column, [item shortDescription]);
             
-            if (nearlyVisible && !_flags.isRotating) {
-                if (proxyView) {
-                    // keep the view for now...
-                    OBASSERT([unusedProxyViews containsObjectIdenticalTo:proxyView]);
-                    [unusedProxyViews removeObjectIdenticalTo:proxyView];
-                    DEBUG_LAYOUT(@"  kept nearly visible view");
+            CGRect frame = _frameForPositionAtIndex(positionIndex, itemSize, itemsPerRow);
+            
+            // If the item is on screen, give it a view to use
+            BOOL itemVisible = CGRectIntersectsRect(frame, contentRect);
+            
+            // Optimization: build a pointer->pointer dictionary? We don't have many views, so this O(N*M) loop is probably not too bad...
+            OUIDocumentPickerItemView *itemView = [self itemViewForItem:item];
+            
+            DEBUG_LAYOUT(@"  assigned frame %@, visible %d", NSStringFromCGRect(frame), itemVisible);
+            
+            if (itemVisible) {
+                // If it is visible and already has a view, let it keep the one it has.
+                if (itemView) {
+                    OBASSERT([unusedFileItemViews containsObjectIdenticalTo:itemView] ^ [unusedGroupItemViews containsObjectIdenticalTo:itemView]);
+                    [unusedFileItemViews removeObjectIdenticalTo:itemView];
+                    [unusedGroupItemViews removeObjectIdenticalTo:itemView];
+                    itemView.frame = frame;
+                    DEBUG_LAYOUT(@"  kept view %@", [itemView shortDescription]);
                 } else {
-                    // try to give this a view if we can so it can preload its preview
-                    if (!nearlyVisibleProxiesWithoutView)
-                        nearlyVisibleProxiesWithoutView = [NSMutableArray array];
-                    [nearlyVisibleProxiesWithoutView addObject:proxy];
-                }
-            } else {
-                // If we aren't close to being visible and yet have a view, give it up.
-                if (proxyView) {
-                    proxy.view = nil;
-                    DEBUG_LAYOUT(@"Removed view from proxy %@", proxy.name);
+                    // This item needs a view!
+                    if (!visibleItemsWithoutView)
+                        visibleItemsWithoutView = [NSMutableArray array];
+                    [visibleItemsWithoutView addObject:item];
                 }
             }
-        } else {
-            // If it is visible and already has a view, let it keep the one it has.
-            if (proxyView) {
-                OBASSERT([unusedProxyViews containsObjectIdenticalTo:proxyView]);
-                [unusedProxyViews removeObjectIdenticalTo:proxyView];
-                DEBUG_LAYOUT(@"  kept view");
-            } else {
-                // This proxy needs a view!
-                if (!visibleProxiesWithoutView)
-                    visibleProxiesWithoutView = [NSMutableArray array];
-                [visibleProxiesWithoutView addObject:proxy];
-            }
-        }
-        
-        if (proxy.layoutShouldAdvance) {
-            CGFloat nextXOffset = CGRectGetMaxX(frame);
-            DEBUG_LAYOUT(@"  stepping %f", nextXOffset - xOffset);
-            xOffset = nextXOffset;
-        }
-        
-        xOffset += additialOffset;
-    }
-    
-    // Now, assign views to visibile or nearly visible proxies that don't have them. First, union the two lists.
-    if (visibleProxiesWithoutView || nearlyVisibleProxiesWithoutView) {
-        NSMutableArray *proxiesNeedingView = [NSMutableArray array];
-        if (visibleProxiesWithoutView)
-            [proxiesNeedingView addObjectsFromArray:visibleProxiesWithoutView];
-        if (nearlyVisibleProxiesWithoutView)
-            [proxiesNeedingView addObjectsFromArray:nearlyVisibleProxiesWithoutView];
-        
-        for (OUIDocumentProxy *proxy in proxiesNeedingView) {            
-            OBASSERT(proxy.view == nil);
             
-            OUIDocumentProxyView *view = [unusedProxyViews lastObject];
-            OBASSERT(view); // we should never run out given that our layout only shows 3 at a time.
-            if (view) {
-                OBASSERT(view.superview == self); // we keep these views as subviews, just hide them.
+            if (!([_itemsIgnoredForLayout containsObject:item])) {
+                OBFinishPortingLater("The by-index lookup won't skip ignored items.");
+                positionIndex++;
+            }
+        }
+        
+        // Check if item views that are changing items are (probably) doing so because we are scrolling
+        BOOL disableAnimationOnItemChange = self.dragging || self.decelerating;
+        
+        // Now, assign views to visibile or nearly visible items that don't have them. First, union the two lists.
+        for (OFSDocumentStoreItem *item in visibleItemsWithoutView) {            
+            
+            NSMutableArray *itemViews = nil;
+            if ([item isKindOfClass:[OFSDocumentStoreFileItem class]]) {
+                itemViews = unusedFileItemViews;
+            } else {
+                itemViews = unusedGroupItemViews;
+            }
+            OUIDocumentPickerItemView *itemView = [itemViews lastObject];
+            
+            if (itemView) {
+                OBASSERT(itemView.superview == self); // we keep these views as subviews, just hide them.
                 
                 // Make the view start out at the "original" position instead of flying from where ever it was last left.
                 OUIBeginWithoutAnimating
                 {
-                    view.hidden = NO;
-                    view.frame = proxy.previousFrame;
+                    itemView.hidden = NO;
+                    itemView.frame = [self frameForItem:item];
+                    itemView.shrunken = ([_itemsBeingAdded member:item] != nil);
+                    [itemView setEditing:_flags.isEditing animated:NO];
                 }
                 OUIEndWithoutAnimating;
                 
-                proxy.view = view;
-                [unusedProxyViews removeLastObject];
-                DEBUG_LAYOUT(@"Assigned view %@ to proxy %@", [proxy.view shortDescription], proxy.name);
+                OUIWithAnimationsDisabled(disableAnimationOnItemChange, ^{
+                    itemView.item = item;
+                });
+                
+                [itemViews removeLastObject];
+                DEBUG_LAYOUT(@"Assigned view %@ to item %@", [itemView shortDescription], item.name);
+            } else {
+                DEBUG_LAYOUT(@"Missing view for item %@ at %@", item.name, NSStringFromCGRect([self frameForItem:item]));
+                OBASSERT(itemView); // we should never run out given that we make enough up front
             }
         }
-    }
-    
-    // Any remaining unused proxy views should be hidden.
-    for (OUIDocumentProxyView *view in unusedProxyViews) {
-        DEBUG_LAYOUT(@"Hiding unused view %@", [view shortDescription]);
-        view.hidden = YES;
-        view.preview = nil;
-    }
-    [unusedProxyViews release];
-    
-    self.contentSize = CGSizeMake(xOffset, maximumHeight);
-    self.contentInset = UIEdgeInsetsMake(0,
-                                         ceil(bounds.size.width - firstProxyWidth) / 2,
-                                         0,
-                                         ceil(bounds.size.width - lastProxyWidth) / 2);
-    
-
-    OUIDocumentProxy *centerProxy = [self proxyClosestToCenter];
-    if (_flags.needsRecentering && centerProxy != nil) {
-        [self setContentOffset:_contentOffsetForCenteringProxy(self, centerProxy) animated:NO];
-        _flags.needsRecentering = NO;
-    }
-
-    BOOL changedSelection = NO;
-    for (OUIDocumentProxy *proxy in _sortedProxies) {
-        BOOL isSelected = (proxy == centerProxy);
-        changedSelection |= (proxy.selected ^ isSelected);
-        proxy.selected = isSelected;
-    }
-    
-    if (changedSelection || !centerProxy) {
-        [self.delegate documentPickerView:self didSelectProxy:centerProxy];
-    }
+        
+        // Update dragging state
+        for (OUIDocumentPickerFileItemView *fileItemView in _fileItemViews) {
+            if (fileItemView.hidden) {
+                fileItemView.draggingState = OUIDocumentPickerItemViewNoneDraggingState;
+                continue;
+            }
+            
+            OFSDocumentStoreFileItem *fileItem = (OFSDocumentStoreFileItem *)fileItemView.item;
+            OBASSERT([fileItem isKindOfClass:[OFSDocumentStoreFileItem class]]);
+            
+            OBASSERT(!fileItem.draggingSource || fileItem != _draggingDestinationItem); // can't be both the source and destination of a drag!
+            
+            if (fileItem == _draggingDestinationItem)
+                fileItemView.draggingState = OUIDocumentPickerItemViewDestinationDraggingState;
+            else if (fileItem.draggingSource)
+                fileItemView.draggingState = OUIDocumentPickerItemViewSourceDraggingState;
+            else
+                fileItemView.draggingState = OUIDocumentPickerItemViewNoneDraggingState;        
+        }
+        
+        // Any remaining unused item views should have no item and be hidden.
+        for (OUIDocumentPickerFileItemView *view in unusedFileItemViews) {
+            view.hidden = YES;
+            [view prepareForReuse];
+        }
+        for (OUIDocumentPickerGroupItemView *view in unusedGroupItemViews) {
+            view.hidden = YES;
+            [view prepareForReuse];
+        }
+        
+        [unusedFileItemViews release];
+        [unusedGroupItemViews release];
+        
+    });
 }
 
 #pragma mark -
-#pragma mark UIResponder
+#pragma mark Private
 
-- (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event;
+- (void)_itemViewTapped:(UITapGestureRecognizer *)recognizer;
 {
-    _cancelSmoothScroll(&_smoothScroll);
-    [super touchesBegan:touches withEvent:event];
+    if ([[OUIAppController controller] activityIndicatorVisible]) {
+        OBASSERT_NOT_REACHED("Should have been blocked");
+        return;
+    }
+
+    UIView *hitView = [recognizer hitView];
+    OUIDocumentPickerItemView *itemView = [hitView containingViewOfClass:[OUIDocumentPickerItemView class]];
+    if (itemView) {
+        // should be one of ours, not some other temporary animating item view        
+        OBASSERT([_fileItemViews containsObjectIdenticalTo:itemView] ^ [_groupItemViews containsObjectIdenticalTo:itemView]);
+        OBASSERT(itemView.hidden == NO); // shouldn't be hittable if hidden
+        OBASSERT(itemView.item); // should have an item if it is on screen/not hidden
+        
+        if ([hitView isDescendantOfView:itemView.previewView]) {
+            [self.delegate documentPickerScrollView:self itemViewTapped:itemView inArea:OUIDocumentPickerItemViewTapAreaPreview];
+        } else if ([hitView isDescendantOfView:itemView]) {
+            [self.delegate documentPickerScrollView:self itemViewTapped:itemView inArea:OUIDocumentPickerItemViewTapAreaLabelAndDetails];
+        } else {
+            OBASSERT_NOT_REACHED("Should be fully covered by the subviews...");
+        }
+    }
 }
 
-- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event;
+// The size of the document prevew grid in items. That is, if gridSize.width = 4, then 4 items will be shown across the width.
+// The width must be at least one and integral. The height must be at least one, but may be non-integral if you want to have a row of itemss peeking out.
++ (CGSize)_gridSizeForLandscape:(BOOL)landscape;
 {
-    // If all the touches have ended, and there is no autoscroll, then the user possibly just grabbed the view while it was autoscrolling to stop it.
-    if ([[event touchesForView:self] isSubsetOfSet:touches])
-        [self snapToProxy:self.proxyClosestToCenter animated:YES];
-    [super touchesEnded:touches withEvent:event];
+    // We could maybe make this configurable via a plist entry or delegate callback, but it needs to be relatively static so we can cache preview images at the exact right size (scaling preview images after the fact varies from slow to ugly based on the size of the original preview image).
+    if (landscape)
+        return CGSizeMake(4, 3.2);
+    else
+        return CGSizeMake(3, 3.175);
 }
 
 @end

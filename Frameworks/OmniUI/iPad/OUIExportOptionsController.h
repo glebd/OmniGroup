@@ -8,18 +8,13 @@
 // $Id$
 
 #import <UIKit/UIViewController.h>
+#import <OmniUI/OUISyncTypes.h>
+
 #import "OUISyncMenuController.h"
 
-enum {
-    OUIExportOptionsExport,
-    OUIExportOptionsEmail,
-    OUIExportOptionsSendToApp,
-}; 
-typedef NSUInteger OUIExportOptionsType;
 
-@class OFFileWrapper;
-@class OUIExportOptionsView;
-@class OUIOverlayView;
+@class NSFileWrapper;
+@class OUIExportOptionsView, OUIOverlayView;
 
 @interface OUIExportOptionsController : UIViewController <UIDocumentInteractionControllerDelegate>
 {
@@ -39,7 +34,7 @@ typedef NSUInteger OUIExportOptionsType;
 }
 
 - (id)initWithExportType:(OUIExportOptionsType)exportType;
-- (void)exportFileWrapper:(OFFileWrapper *)fileWrapper;
+- (void)exportFileWrapper:(NSFileWrapper *)fileWrapper;
 - (void)signOut:(id)sender;
 
 @property(nonatomic, retain) IBOutlet OUIExportOptionsView *exportView;

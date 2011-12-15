@@ -32,7 +32,7 @@ static const struct {
     { 0, nil }
 };
 
-#if OF_ENABLE_CSSM
+#if OF_ENABLE_CDSA
 /* The original motivation for OFStringFromCSSMReturn() was that we had to weak-link both cssmErrorString() (for 10.4) and SecCopyErrorMessageString() (for later OS revisions), but nw it's mostly a cover on SecCopyErrorMessageString(). However, it's still handy to have a guaranteed non-nil result that's at least minimally informative. */
 NSString *OFStringFromCSSMReturn(CSSM_RETURN code)
 {
@@ -65,6 +65,9 @@ NSString *OFStringFromCSSMReturn(CSSM_RETURN code)
     return [NSString stringWithFormat:@"%@ (%d)", errorString, code];
 }
 
+NSString * const OFCDSAErrorDomain = @"com.omnigroup.OmniFoundation.CDSA";
+#define OFCDSAErrorDomain ( @"com.omnigroup.OmniFoundation.CDSA" )  // Same
+
 BOOL OFErrorFromCSSMReturn(NSError **outError, CSSM_RETURN errcode, NSString *function)
 {
     if (outError) {
@@ -72,7 +75,7 @@ BOOL OFErrorFromCSSMReturn(NSError **outError, CSSM_RETURN errcode, NSString *fu
         if (function)
             descr = [NSString stringWithStrings:descr, @" in ", function, nil];
         
-        *outError = [NSError errorWithDomain:@"com.omnigroup.OmniFoundation.CDSA" code:errcode userInfo:[NSDictionary dictionaryWithObject:descr forKey:NSLocalizedDescriptionKey]];
+        *outError = [NSError errorWithDomain:OFCDSAErrorDomain code:errcode userInfo:[NSDictionary dictionaryWithObject:descr forKey:NSLocalizedDescriptionKey]];
     }
     return NO; // Useless, but makes clang-analyze happy
 }
@@ -93,7 +96,7 @@ static inline NSString *NSStringFromCSSMGUID(CSSM_GUID uid)
 
 #pragma mark Cryptographic Service Provider handle
 
-#if OF_ENABLE_CSSM
+#if OF_ENABLE_CDSA
 @implementation OFCDSAModule
 
 static void *cssmLibcMalloc(CSSM_SIZE size, void *allocref)
@@ -238,7 +241,7 @@ static const CSSM_VERSION callingApiVersion = {2,0};
 
 #pragma mark Key reference
 
-#if OF_ENABLE_CSSM
+#if OF_ENABLE_CDSA
 @implementation OFCSSMKey
 
 - initWithCSP:(OFCDSAModule *)cryptographicServiceProvider
@@ -330,6 +333,46 @@ static const CSSM_VERSION callingApiVersion = {2,0};
 
 @synthesize credentials;
 
+static inline BOOL isMACAlg(CSSM_ALGORITHMS algid)
+{
+    /* This function is kind of a hack. Probably we should have distinct CSSM key subclasses for asymmetric and HMAC keys. */
+    switch (algid) {
+        case CSSM_ALGID_MD5HMAC:
+        case CSSM_ALGID_SHA1HMAC:
+            return YES;
+        default:
+            return NO;
+    }
+}
+
+- (id <NSObject,OFDigestionContext>)newVerificationContextForAlgorithm:(CSSM_ALGORITHMS)pk_signature_alg error:(NSError **)outError
+{
+    OFCDSAModule *thisCSP = [self csp];
+    
+    if (!thisCSP)
+        thisCSP = [OFCDSAModule appleCSP];
+    
+    if (!isMACAlg(pk_signature_alg)) {
+        CSSM_CC_HANDLE context = CSSM_INVALID_HANDLE;
+        CSSM_RETURN err = CSSM_CSP_CreateSignatureContext([thisCSP handle], pk_signature_alg, [self credentials], [self key], &context);
+        if (err != CSSM_OK || context == CSSM_INVALID_HANDLE) {
+            OFErrorFromCSSMReturn(outError, err, @"CSSM_CSP_CreateSignatureContext");
+            return nil;
+        }
+        
+        return [[OFCSSMSignatureContext alloc] initWithCSP:thisCSP cc:context];
+    } else {
+        CSSM_CC_HANDLE context = CSSM_INVALID_HANDLE;
+        CSSM_RETURN err = CSSM_CSP_CreateMacContext([thisCSP handle], pk_signature_alg, [self key], &context);
+        if (err != CSSM_OK || context == CSSM_INVALID_HANDLE) {
+            OFErrorFromCSSMReturn(outError, err, @"CSSM_CSP_CreateMacContext");
+            return nil;
+        }
+        
+        return [[OFCSSMMacContext alloc] initWithCSP:thisCSP cc:context];
+    }    
+}
+
 - (NSMutableDictionary *)debugDictionary;
 {
     NSMutableDictionary *dict = [super debugDictionary];
@@ -403,7 +446,7 @@ static const CSSM_VERSION callingApiVersion = {2,0};
 
 #pragma mark Cryptographic contexts of various sorts
 
-#if OF_ENABLE_CSSM
+#if OF_ENABLE_CDSA
 static inline BOOL cssmCheckError(NSError **outError, CSSM_RETURN errcode, NSString *function)
 {
     if (errcode == CSSM_OK)
@@ -415,10 +458,10 @@ static inline BOOL cssmCheckError(NSError **outError, CSSM_RETURN errcode, NSStr
 
 @implementation OFCSSMCryptographicContext
 
-- initWithCSP:(OFCDSAModule *)cryptographcServiceProvider cc:(CSSM_CC_HANDLE)ctxt;
+- initWithCSP:(OFCDSAModule *)cryptographicServiceProvider cc:(CSSM_CC_HANDLE)ctxt;
 {
     self = [super init];
-    csp = [cryptographcServiceProvider retain];
+    csp = [cryptographicServiceProvider retain];
     ccontext = ctxt;
     return self;
 }
@@ -625,53 +668,9 @@ static inline BOOL cssmCheckError(NSError **outError, CSSM_RETURN errcode, NSStr
 }
 
 @end
-#endif // OF_ENABLE_CSSM
+#endif // OF_ENABLE_CDSA
 
-#if OF_ENABLE_CSSM
-NSArray *OFReadCertificatesFromFile(NSString *path, SecExternalFormat inputFormat_, NSError **outError)
-{
-    NSData *pemFile = [[NSData alloc] initWithContentsOfFile:path options:0 error:outError];
-    if (!pemFile)
-        return nil;
-    
-    SecExternalFormat inputFormat;
-    SecExternalItemType itemType;
-    SecKeyImportExportParameters  keyParams = (SecKeyImportExportParameters){
-        .version = SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION,
-        .flags = 0,
-        .passphrase = NULL,
-        .alertTitle = NULL,
-        .alertPrompt = NULL,
-        .accessRef = NULL,
-        .keyUsage = CSSM_KEYUSE_VERIFY,
-        .keyAttributes = CSSM_KEYATTR_EXTRACTABLE | CSSM_KEYATTR_RETURN_DATA
-    };
-    CFArrayRef outItems;
-    
-    inputFormat = inputFormat_;
-    itemType = kSecItemTypeCertificate;
-    
-    OSStatus err = SecKeychainItemImport((CFDataRef)pemFile, (CFStringRef)path,
-                                         &inputFormat, &itemType, 0, &keyParams, NULL, &outItems);
-    
-    [pemFile release];
-    
-    if (err != noErr) {
-        if (outError)
-            *outError = [NSError errorWithDomain:NSOSStatusErrorDomain code:err userInfo:[NSDictionary dictionaryWithObjectsAndKeys:path, NSFilePathErrorKey, @"SecKeychainItemImport", @"function", nil]];
-        return nil;
-    }
-    
-    
-    if (!outItems)
-        return [NSArray array];
-    NSArray *nsRef = [[(id)outItems retain] autorelease];
-    CFRelease(outItems);
-    return nsRef;
-}
-#endif
-
-#if OF_ENABLE_CSSM
+#if OF_ENABLE_CDSA
 NSData *OFGetAppleKeyDigest(const CSSM_KEY *pkey, CSSM_CC_HANDLE ccontext, NSError **outError)
 {
     CSSM_RETURN cssmerr;

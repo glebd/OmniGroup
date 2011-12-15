@@ -9,10 +9,12 @@
 
 #import <OmniUI/OUIEditableFrame.h>
 #import <OmniUI/OUIAppController.h>
+#import <OmniUI/OUISingleDocumentAppController.h>
 
 #import <QuartzCore/QuartzCore.h>
 #import <AssetsLibrary/AssetsLibrary.h>
 #import <OmniFoundation/OFFileWrapper.h>
+#import <OmniFoundation/OFExtent.h>
 #import <OmniAppKit/OATextAttachment.h>
 #import <OmniAppKit/OATextStorage.h>
 
@@ -22,9 +24,19 @@
 RCS_ID("$Id$");
 
 @interface TextViewController () <UINavigationControllerDelegate, UIImagePickerControllerDelegate>
+- (void)_updateEditorFrame;
+- (void)_scrollTextSelectionToVisibleWithAnimation:(BOOL)animated;
 @end
 
 @implementation TextViewController
+{
+    RTFDocument *_nonretained_document;
+    UIToolbar *_toolbar;
+    OUIEditableFrame *_editor;
+}
+
+@synthesize toolbar = _toolbar;
+@synthesize editor = _editor;
 
 - init;
 {
@@ -33,11 +45,10 @@ RCS_ID("$Id$");
 
 - (void)dealloc;
 {
+    [_toolbar release];
     [_editor release];
     [super dealloc];
 }
-
-@synthesize editor = _editor;
 
 #pragma mark -
 #pragma mark UIResponder subclass
@@ -60,6 +71,8 @@ RCS_ID("$Id$");
 {
     [super viewDidLoad];
 
+    _toolbar.items = [[OUISingleDocumentAppController controller] toolbarItemsForDocument:self.document];
+    
 #if 0
     self.view.layer.borderColor = [[UIColor blueColor] CGColor];
     self.view.layer.borderWidth = 2;
@@ -72,16 +85,29 @@ RCS_ID("$Id$");
     _editor.delegate = self;
     
     _editor.attributedText = _nonretained_document.text;
-    [self textViewContentsChanged:_editor];
+    [self _updateEditorFrame];
     
     [self adjustScaleTo:1];
     [self adjustContentInset];
+    [self _scrollTextSelectionToVisibleWithAnimation:NO];
 }
 
 - (void)viewDidUnload;
 {
+    self.toolbar = nil;
     self.editor = nil;
     [super viewDidUnload];
+}
+
+#pragma mark -
+#pragma mark UIViewController (OUIMainViewControllerExtensions)
+
+- (UIToolbar *)toolbarForMainViewController;
+{
+    if (!_toolbar)
+        [self view]; // It's in our xib
+    OBASSERT(_toolbar);
+    return _toolbar;
 }
 
 #pragma mark OUIEditableFrameDelegate
@@ -90,14 +116,20 @@ static CGFloat kPageWidth = (72*8.5); // Vaguely something like 8.5x11 width.
 
 - (void)textViewContentsChanged:(OUIEditableFrame *)textView;
 {
-    CGFloat usedHeight = _editor.viewUsedSize.height;
-    _editor.frame = CGRectMake(0, 0, kPageWidth, usedHeight);
-}
-
-- (void)textViewDidEndEditing:(OUIEditableFrame *)textView;
-{
+    [self _updateEditorFrame];
+    
     // We need more of a text storage model so that selection changes can participate in undo.
     _nonretained_document.text = textView.attributedText;
+
+    // Setting the frame will invalidate layout, which we need for selection rect queries.
+    [_editor textUsedSize];
+    
+    [self _scrollTextSelectionToVisibleWithAnimation:YES];
+}
+
+- (void)textViewSelectionChanged:(OUIEditableFrame *)textView;
+{
+    [self _scrollTextSelectionToVisibleWithAnimation:YES];
 }
 
 #pragma mark -
@@ -150,7 +182,7 @@ static CGFloat kPageWidth = (72*8.5); // Vaguely something like 8.5x11 width.
     if ([rep getBytes:[data mutableBytes] fromOffset:0 length:[rep size] error:&error] == 0) {
         NSLog(@"error getting asset data %@", [error toPropertyList]);
     } else {
-        OFFileWrapper *wrapper = [[[OFFileWrapper alloc] initRegularFileWithContents:data] autorelease];
+        NSFileWrapper *wrapper = [[[NSFileWrapper alloc] initRegularFileWithContents:data] autorelease];
         wrapper.filename = [[rep url] lastPathComponent];
         
         // a real implementation would really check that the UTI inherits from public.image here (we could get movies any maybe PDFs in the future) and would provide an appropriate cell class for the type (or punt and not create an attachment).
@@ -199,6 +231,89 @@ static CGFloat kPageWidth = (72*8.5); // Vaguely something like 8.5x11 width.
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker;
 {
     [[OUIAppController controller] dismissPopoverAnimated:YES];
+}
+
+#pragma mark -
+#pragma mark Private
+
+- (void)_updateEditorFrame;
+{
+    CGFloat usedHeight = _editor.viewUsedSize.height;
+    _editor.frame = CGRectMake(0, 0, kPageWidth, usedHeight);
+}
+
+static const CGFloat kScrollContext = 66;
+
+#if 0 && defined(DEBUG)
+    #define DEBUG_SCROLL(format, ...) NSLog(@"SCROLL: " format, ## __VA_ARGS__)
+#else
+    #define DEBUG_SCROLL(format, ...) do {} while (0)
+#endif
+
+static CGFloat _scrollCoord(OFExtent containerExtent, OFExtent innerExtent)
+{
+    CGFloat minEdgeDistance = fabs(OFExtentMin(containerExtent) - OFExtentMin(innerExtent));
+    CGFloat maxEdgeDistance = fabs(OFExtentMax(containerExtent) - OFExtentMax(innerExtent));
+    
+    DEBUG_SCROLL(@"  minEdgeDistance %f, maxEdgeDistance %f", minEdgeDistance, maxEdgeDistance);
+    
+    if (minEdgeDistance < maxEdgeDistance) {
+        return OFExtentMin(innerExtent);
+    } else {
+        return OFExtentMax(innerExtent) - OFExtentLength(containerExtent);
+    }
+}
+
+static void _scrollVerticallyInView(UIScrollView *scrollView, UIView *view, CGRect viewRect, BOOL animated)
+{
+    DEBUG_SCROLL(@"vertical: view:%@ viewRect %@ animated", [view shortDescription], NSStringFromCGRect(viewRect));
+    
+    CGRect targetViewRect = [scrollView convertRect:viewRect fromView:view];
+    DEBUG_SCROLL(@"  targetViewRect %@", NSStringFromCGRect(targetViewRect));
+    
+    CGRect scrollBounds = scrollView.bounds;
+    
+    OFExtent targetViewYExtent = OFExtentFromRectYRange(targetViewRect);
+    OFExtent scrollBoundsYExtent = OFExtentFromRectYRange(scrollBounds);
+    
+    DEBUG_SCROLL(@"  targetViewYExtent = %@, scrollBoundsYExtent = %@", OFExtentToString(targetViewYExtent), OFExtentToString(scrollBoundsYExtent));
+    DEBUG_SCROLL(@"  scroll bounds %@, scroll offset %@", NSStringFromCGRect(scrollView.bounds), NSStringFromCGPoint(scrollView.contentOffset));
+    
+    if (OFExtentMin(targetViewYExtent) < OFExtentMin(scrollBoundsYExtent) + kScrollContext) {
+        CGFloat extraScrollPadding = CLAMP(kScrollContext, 0.0f, scrollView.contentOffset.y);
+        targetViewYExtent.length += extraScrollPadding; // When we scroll, try to show a little context on the other side
+        targetViewYExtent.location -= extraScrollPadding; // If we're scrolling up, we want our target to extend up rather than down
+    } else {
+        CGFloat extraScrollPadding = CLAMP(kScrollContext, 0.0f, OFExtentLength(scrollBoundsYExtent) - OFExtentLength(targetViewYExtent));
+        targetViewYExtent.length += extraScrollPadding; // When we scroll, try to show a little context on the other side
+    }
+    
+    if (OFExtentContainsExtent(scrollBoundsYExtent, targetViewYExtent)) {
+        DEBUG_SCROLL(@"  already visible");
+        return; // Already fully visible
+    }
+    
+    if (OFExtentContainsExtent(targetViewYExtent, scrollBoundsYExtent)) {
+        DEBUG_SCROLL(@"  everything visible is already within the target");
+        return; // Everything visible is already within the target
+    }
+    
+    CGPoint contentOffset = scrollView.contentOffset;
+    contentOffset.y = _scrollCoord(scrollBoundsYExtent, targetViewYExtent);
+    
+    // UIScrollView ignores +[UIView areAnimationsEnabled]. Don't provoke animation when we shouldn't be animating.
+    animated &= [UIView areAnimationsEnabled];
+    
+    [scrollView setContentOffset:contentOffset animated:animated];
+}
+
+- (void)_scrollTextSelectionToVisibleWithAnimation:(BOOL)animated;
+{
+    UITextRange *selection = _editor.selectedTextRange;
+    if (selection && [_editor window]) {
+        CGRect selectionRect = [_editor boundsOfRange:_editor.selectedTextRange];
+        _scrollVerticallyInView(self.scrollView, _editor, selectionRect, animated);
+    }
 }
 
 @end

@@ -9,6 +9,7 @@
 
 #import <Foundation/NSPropertyList.h>
 #import <OmniBase/system.h>
+#import <OmniBase/macros.h>
 #import <OmniBase/NSError-OBExtensions.h>
 
 #import <OmniFoundation/NSProcessInfo-OFExtensions.h>
@@ -34,10 +35,8 @@
 
 RCS_ID("$Id$")
 
-OBDEPRECATED_METHODS(NSFileManagerHandler)
-- (BOOL)fileManager:(NSFileManager *)fm shouldProceedAfterError:(NSDictionary *)errorInfo;
-- (void)fileManager:(NSFileManager *)fm willProcessPath:(NSString *)path;
-@end
+OBDEPRECATED_METHOD(-fileManager:shouldProceedAfterError:);
+OBDEPRECATED_METHOD(-fileManager:willProcessPath:);
 
 @interface NSFileManager (OFPrivate)
 - (int)filesystemStats:(struct statfs *)stats forPath:(NSString *)path;
