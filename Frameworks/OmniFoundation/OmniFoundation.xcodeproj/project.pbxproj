@@ -3704,6 +3704,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4A4E080A08AA73400098FF0F /* Omni-Framework-Debug.xcconfig */;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "3rd Party Mac Developer Application";
 				INFOPLIST_FILE = Info.plist;
 				OMNI_BUNDLE_IDENTIFIER = com.omnigroup.framework.OmniFoundation;
 				OTHER_LDFLAGS = (
@@ -3711,6 +3712,7 @@
 					"$(BZ2_LDFLAGS)",
 				);
 				PRODUCT_NAME = OmniFoundation;
+				PROVISIONING_PROFILE = "";
 				SECTORDER_FLAGS = (
 					"-sectorder",
 					__TEXT,
@@ -3724,6 +3726,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4A4E080B08AA73400098FF0F /* Omni-Framework-Release.xcconfig */;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "3rd Party Mac Developer Application";
 				INFOPLIST_FILE = Info.plist;
 				OMNI_BUNDLE_IDENTIFIER = com.omnigroup.framework.OmniFoundation;
 				OTHER_LDFLAGS = (
@@ -3731,6 +3734,7 @@
 					"$(BZ2_LDFLAGS)",
 				);
 				PRODUCT_NAME = OmniFoundation;
+				PROVISIONING_PROFILE = "";
 				SECTORDER_FLAGS = (
 					"-sectorder",
 					__TEXT,
@@ -3744,6 +3748,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4A4E080908AA73400098FF0F /* Omni-Framework-Coverage.xcconfig */;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "3rd Party Mac Developer Application";
 				INFOPLIST_FILE = Info.plist;
 				OMNI_BUNDLE_IDENTIFIER = com.omnigroup.framework.OmniFoundation;
 				OTHER_LDFLAGS = (
@@ -3751,6 +3756,7 @@
 					"$(BZ2_LDFLAGS)",
 				);
 				PRODUCT_NAME = OmniFoundation;
+				PROVISIONING_PROFILE = "";
 				SECTORDER_FLAGS = (
 					"-sectorder",
 					__TEXT,

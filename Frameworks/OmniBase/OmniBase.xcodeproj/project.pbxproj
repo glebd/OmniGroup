@@ -641,11 +641,13 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4AAFAE1908A0216200E04045 /* Omni-Framework-Debug.xcconfig */;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "3rd Party Mac Developer Application";
 				GCC_ENABLE_OBJC_GC = supported;
 				INFOPLIST_FILE = Info.plist;
 				INSTALL_PATH = "";
 				OMNI_BUNDLE_IDENTIFIER = com.omnigroup.framework.OmniBase;
 				PRODUCT_NAME = OmniBase;
+				PROVISIONING_PROFILE = "";
 				SECTORDER_FLAGS = (
 					"-sectorder",
 					__TEXT,
@@ -659,10 +661,12 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4AAFAE1A08A0216200E04045 /* Omni-Framework-Release.xcconfig */;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "3rd Party Mac Developer Application";
 				GCC_ENABLE_OBJC_GC = supported;
 				INFOPLIST_FILE = Info.plist;
 				OMNI_BUNDLE_IDENTIFIER = com.omnigroup.framework.OmniBase;
 				PRODUCT_NAME = OmniBase;
+				PROVISIONING_PROFILE = "";
 				SECTORDER_FLAGS = (
 					"-sectorder",
 					__TEXT,
@@ -676,10 +680,12 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4AAFAE1808A0216200E04045 /* Omni-Framework-Coverage.xcconfig */;
 			buildSettings = {
+				CODE_SIGN_IDENTITY = "3rd Party Mac Developer Application";
 				GCC_ENABLE_OBJC_GC = supported;
 				INFOPLIST_FILE = Info.plist;
 				OMNI_BUNDLE_IDENTIFIER = com.omnigroup.framework.OmniBase;
 				PRODUCT_NAME = OmniBase;
+				PROVISIONING_PROFILE = "";
 				SECTORDER_FLAGS = (
 					"-sectorder",
 					__TEXT,
