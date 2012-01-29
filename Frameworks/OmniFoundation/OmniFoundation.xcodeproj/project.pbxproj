@@ -3719,6 +3719,7 @@
 					__text,
 					"$(PRODUCT_NAME).order",
 				);
+				SKIP_INSTALL = YES;
 			};
 			name = Debug;
 		};
@@ -3741,6 +3742,7 @@
 					__text,
 					"$(PRODUCT_NAME).order",
 				);
+				SKIP_INSTALL = YES;
 			};
 			name = Release;
 		};
@@ -3763,6 +3765,7 @@
 					__text,
 					"$(PRODUCT_NAME).order",
 				);
+				SKIP_INSTALL = YES;
 			};
 			name = Coverage;
 		};

@@ -654,6 +654,7 @@
 					__text,
 					OmniBase.order,
 				);
+				SKIP_INSTALL = YES;
 			};
 			name = Debug;
 		};
@@ -673,6 +674,7 @@
 					__text,
 					OmniBase.order,
 				);
+				SKIP_INSTALL = YES;
 			};
 			name = Release;
 		};
@@ -692,6 +694,7 @@
 					__text,
 					OmniBase.order,
 				);
+				SKIP_INSTALL = YES;
 			};
 			name = Coverage;
 		};

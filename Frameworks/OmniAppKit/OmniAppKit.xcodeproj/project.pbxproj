@@ -3137,6 +3137,7 @@
 					__text,
 					"$(PRODUCT_NAME).order",
 				);
+				SKIP_INSTALL = YES;
 			};
 			name = Release;
 		};
