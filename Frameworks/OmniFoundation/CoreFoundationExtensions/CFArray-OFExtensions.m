@@ -13,14 +13,14 @@
 
 RCS_ID("$Id$");
 
-CFMutableArrayRef OFCreateNonOwnedPointerArray(void)
+NSMutableArray *OFCreateNonOwnedPointerArray(void)
 {
-    return CFArrayCreateMutable(kCFAllocatorDefault, 0, &OFNonOwnedPointerArrayCallbacks);
+    return (NSMutableArray *)CFArrayCreateMutable(kCFAllocatorDefault, 0, &OFNonOwnedPointerArrayCallbacks);
 }
 
-CFMutableArrayRef OFCreateIntegerArray(void)
+NSMutableArray *OFCreateIntegerArray(void)
 {
-    return CFArrayCreateMutable(kCFAllocatorDefault, 0, &OFIntegerArrayCallbacks);
+    return (NSMutableArray *)CFArrayCreateMutable(kCFAllocatorDefault, 0, &OFIntegerArrayCallbacks);
 }
 
 Boolean OFCFArrayIsSortedAscendingUsingFunction(CFArrayRef self, CFComparatorFunction comparator, void *context)
