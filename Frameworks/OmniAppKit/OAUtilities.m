@@ -5,6 +5,8 @@
 // distributed with this project and can also be found at
 // <http://www.omnigroup.com/developer/sourcecode/sourcelicense/>.
 
+// HACK: Allow direct inclusion of OmniGroup frameworks into projects
+#import <OmniFoundation/DataStructures.subproj/OFNull.h>
 #import <OmniAppKit/OAUtilities.h>
 
 RCS_ID("$Id$");
