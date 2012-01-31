@@ -10,7 +10,7 @@
 #import <Foundation/Foundation.h>
 
 #import <OmniFoundation/NSString-OFSimpleMatching.h>
-
+#import <OmniFoundation/OFStringScanner.h>
 #import <OmniBase/rcsid.h>
 
 RCS_ID("$Id$");

@@ -7,7 +7,7 @@
 //
 // $Id$
 
-#import <OmniFoundation/OFConcreteInvocation.h>
+#import <OFConcreteInvocation.h>
 
 @interface OFIObjectNSInvocation : OFConcreteInvocation
 {

@@ -7,7 +7,7 @@
 //
 // $Id$
 
-#import <OmniFoundation/OFIObjectSelector.h>
+#import <OFIObjectSelector.h>
 
 @interface OFIObjectSelectorObjectObjectObject : OFIObjectSelector
 {
