@@ -7,6 +7,7 @@
 
 #import <OmniFoundation/OFUtilities.h>
 #import <OmniFoundation/NSDictionary-OFExtensions.h>
+#import <OmniFoundation/OpenStepExtensions.subproj/NSString-OFExtensions.h>
 #import <OmniFoundation/NSString-OFSimpleMatching.h>
 #import <OmniFoundation/OFObject.h>
 

@@ -5,12 +5,13 @@
 // distributed with this project and can also be found at
 // <http://www.omnigroup.com/developer/sourcecode/sourcelicense/>.
 
-#import <OmniFoundation/NSString-OFExtensions.h>
+//#import <OmniFoundation/NSString-OFExtensions.h>
 
 #import <math.h>
 
 #import <OmniFoundation/NSData-OFEncoding.h>
 #import <OmniFoundation/NSMutableString-OFExtensions.h>
+#import <OmniFoundation/OpenStepExtensions.subproj/NSString-OFExtensions.h>
 #import <OmniFoundation/NSObject-OFExtensions.h>
 #import <OmniFoundation/OFRegularExpression.h>
 #import <OmniFoundation/OFRegularExpressionMatch.h>

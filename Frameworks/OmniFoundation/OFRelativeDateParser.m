@@ -13,7 +13,8 @@
 #import <Foundation/NSDateFormatter.h>
 #import <OmniFoundation/NSDictionary-OFExtensions.h>
 #import <OmniFoundation/NSMutableArray-OFExtensions.h>
-#import <OmniFoundation/NSString-OFExtensions.h>
+//#import <OmniFoundation/NSString-OFExtensions.h>
+#import <OmniFoundation/OpenStepExtensions.subproj/NSString-OFExtensions.h>
 #import <OmniFoundation/NSString-OFReplacement.h>
 
 #import <OmniFoundation/OFRegularExpression.h>
