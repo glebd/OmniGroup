@@ -5,7 +5,7 @@
 // distributed with this project and can also be found at
 // <http://www.omnigroup.com/developer/sourcecode/sourcelicense/>.
 
-#import <OmniFoundation/OFConcreteInvocation.h>
+#import <OFConcreteInvocation.h>
 
 RCS_ID("$Id$")
 
@@ -86,15 +86,15 @@ static void getSchedulingInfo(OFMessageQueueSchedulingInfo *returnValue, id targ
 @end
 
 
-#import <OmniFoundation/OFIObjectNSInvocation.h>
-#import <OmniFoundation/OFIObjectSelector.h>
-#import <OmniFoundation/OFIObjectSelectorBool.h>
-#import <OmniFoundation/OFIObjectSelectorInt.h>
-#import <OmniFoundation/OFIObjectSelectorIntInt.h>
-#import <OmniFoundation/OFIObjectSelectorObject.h>
-#import <OmniFoundation/OFIObjectSelectorObjectInt.h>
-#import <OmniFoundation/OFIObjectSelectorObjectObject.h>
-#import <OmniFoundation/OFIObjectSelectorObjectObjectObject.h>
+#import <OFIObjectNSInvocation.h>
+#import <OFIObjectSelector.h>
+#import <OFIObjectSelectorBool.h>
+#import <OFIObjectSelectorInt.h>
+#import <OFIObjectSelectorIntInt.h>
+#import <OFIObjectSelectorObject.h>
+#import <OFIObjectSelectorObjectInt.h>
+#import <OFIObjectSelectorObjectObject.h>
+#import <OFIObjectSelectorObjectObjectObject.h>
 
 @implementation OFInvocation (Inits)
 

@@ -5,9 +5,11 @@
 // distributed with this project and can also be found at
 // <http://www.omnigroup.com/developer/sourcecode/sourcelicense/>.
 
-#import <OmniFoundation/OFIObjectSelectorInt.h>
+#import <OFIObjectSelectorInt.h>
 
 #import <objc/objc-class.h>
+
+#import <OmniFoundation/OFUtilities.h>
 
 RCS_ID("$Id$")
 

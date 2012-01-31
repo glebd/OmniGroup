@@ -8,7 +8,7 @@
 #import <OmniFoundation/OFInvocation.h>
 
 #import <OmniFoundation/OFMessageQueuePriorityProtocol.h>
-#import <OmniFoundation/OFTemporaryPlaceholderInvocation.h>
+#import <OmniFoundation/Scheduling.subproj/OFTemporaryPlaceholderInvocation.h>
 
 RCS_ID("$Id$")
 
