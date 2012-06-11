@@ -269,6 +269,16 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "34EE20D014F0354300722491"
+               BuildableName = "OBUnitTests.octest"
+               BlueprintName = "OBUnitTests"
+               ReferencedContainer = "container:../Frameworks/OmniBase/OmniBase.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "4AA1E7FA08AA764600E2FF6B"
                BuildableName = "OAUnitTests.octest"
                BlueprintName = "OAUnitTests"

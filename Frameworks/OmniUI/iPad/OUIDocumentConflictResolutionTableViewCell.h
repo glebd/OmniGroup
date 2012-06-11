@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -9,11 +9,13 @@
 
 #import <UIKit/UITableViewCell.h>
 
+@class OUIDocumentPreview;
 @class NSFileVersion;
 
 @interface OUIDocumentConflictResolutionTableViewCell : UITableViewCell
 
-@property(nonatomic,retain) UIImage *previewImage;
+@property(nonatomic,retain) OUIDocumentPreview *preview;
 @property(nonatomic,retain) NSFileVersion *fileVersion;
+@property(nonatomic,assign) BOOL landscape;
 
 @end

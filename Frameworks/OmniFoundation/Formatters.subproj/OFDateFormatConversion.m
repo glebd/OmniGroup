@@ -1,4 +1,4 @@
-// Copyright 2010-2011 Omni Development, Inc.  All rights reserved.
+// Copyright 2010-2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -27,7 +27,7 @@ NSString *OFDateFormatStringForOldFormatString(NSString *oldFormat)
         if (nextCharacter != '%') {
             // "Two single quotes represents a literal single quote, either inside or outside single quotes."
             if (nextCharacter == '\'') {
-                CFStringAppend((CFMutableStringRef)result, CFSTR("''"));
+                [result appendString:@"''"];
                 continue;
             }
 
@@ -44,8 +44,7 @@ NSString *OFDateFormatStringForOldFormatString(NSString *oldFormat)
     // Only end literal mode if we got a valid format, else we might be in a sequence of "?" characters
 #define APPEND_FORMAT(f) do { \
     if (inLiteralMode) { \
-        unichar insertCharacter = '\''; \
-        CFStringAppendCharacters((CFMutableStringRef)result, &insertCharacter, 1); \
+        [result appendString:@"\'"]; \
         inLiteralMode = NO; \
     } \
     [result appendString:(f)]; \
@@ -149,7 +148,7 @@ NSString *OFDateFormatStringForOldFormatString(NSString *oldFormat)
                     break;
                     
                 case 'X': // Time using the time representation for the locale (produces different results from strftime())
-                    APPEND_FORMAT(@"HH:mm:SS zzz");
+                    APPEND_FORMAT(@"HH:mm:ss zzz");
                     break;
                     
                 case 'y': // Year without century (00-99)
@@ -264,7 +263,7 @@ NSString *OFOldDateFormatStringForFormatString(NSString *newFormat)
                 if (characterCount >= 3)
                     [result appendString:@"%j"];
                 else
-                    [result appendFormat:@"%%%dj", characterCount];
+                    [result appendFormat:@"%%%luj", characterCount];
                 break;
             case 'E': // day name of week
                 if (characterCount <= 3)

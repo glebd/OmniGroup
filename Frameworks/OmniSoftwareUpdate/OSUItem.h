@@ -1,4 +1,4 @@
-// Copyright 2007-2011 Omni Development, Inc. All rights reserved.
+// Copyright 2007-2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -28,6 +28,8 @@ enum OSUTrackComparison {
 
 #define OSUTrackInformationChangedNotification (@"OSUTrackInfoChanged")
 
+__private_extern__ BOOL OSUItemDebug;
+
 @interface OSUItem : OFObject
 {
     OFVersionNumber *_buildVersion;
@@ -39,6 +41,7 @@ enum OSUTrackComparison {
     
     NSDecimalNumber *_price;
     NSString *_currencyCode;
+    NSNumberFormatter *_priceFormatter; // Cached
     
     NSURL *_releaseNotesURL;
     NSURL *_downloadURL;
@@ -52,6 +55,8 @@ enum OSUTrackComparison {
     BOOL _superseded;
     // Ignored: Has the user chosen not to see this item (or the track it's on)?
     BOOL _ignored;
+    // OldStable: Is this older than the current version, but more stable than it?
+    BOOL _olderStable;
 }
 
 + (void)setSupersededFlagForItems:(NSArray *)items;
@@ -83,13 +88,15 @@ enum OSUTrackComparison {
 
 @property (readonly,nonatomic) NSNumber *price;
 @property (readonly,nonatomic) BOOL isFree;
-@property (readonly,nonatomic) NSAttributedString *priceAttributedString;
+@property (readonly,nonatomic) NSString *priceString;
+- (NSDictionary *)priceAttributesForStyle:(NSBackgroundStyle)cellStyle;
 
 @property (readwrite,nonatomic) BOOL available;
 - (void)setAvailablityBasedOnSystemVersion:(OFVersionNumber *)systemVersion;
 @property (readonly,nonatomic) BOOL isIgnored;
 @property (readwrite,nonatomic) BOOL superseded;
 - (BOOL)supersedesItem:(OSUItem *)peer;
+@property (readwrite,nonatomic) BOOL isOldStable;
 
 - (NSString *)verifyFile:(NSString *)local;
 

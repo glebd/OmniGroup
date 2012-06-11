@@ -1,4 +1,4 @@
-// Copyright 2004-2005, 2007-2008, 2010-2011 Omni Development, Inc.  All rights reserved.
+// Copyright 2004-2005, 2007-2008, 2010-2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -98,6 +98,18 @@ static BOOL isOperatingSystemLaterThanVersionString(NSString *versionString)
     return isLater;
 }
 
++ (BOOL)isOperatingSystemiOS51OrLater; // iOS 5.1
+{
+    static BOOL initialized = NO;
+    static BOOL isLater;
+    
+    if (!initialized) {
+        isLater = isOperatingSystemLaterThanVersionString(@"5.1");
+        initialized = YES;
+    }
+    
+    return isLater;
+}
 
 #else
 
@@ -140,6 +152,19 @@ static BOOL isOperatingSystemLaterThanVersionString(NSString *versionString)
     return isLater;
 }
 
++ (BOOL)isOperatingSystemMountainLionOrLater; // 10.8
+{
+    static BOOL initialized = NO;
+    static BOOL isLater;
+
+    if (!initialized) {
+        isLater = isOperatingSystemLaterThanVersionString(@"10.8");
+        initialized = YES;
+    }
+
+    return isLater;
+}
+
 #endif
 
 /* Initializes the receiver from a string representation of a version number.  The input string may have an optional leading 'v' or 'V' followed by a sequence of positive integers separated by '.'s.  Any trailing component of the input string that doesn't match this pattern is ignored.  If no portion of this string matches the pattern, nil is returned. */
@@ -176,7 +201,7 @@ static BOOL isOperatingSystemLaterThanVersionString(NSString *versionString)
             // Failed to scan integer
             break;
 
-        [cleanVersionString appendFormat: _componentCount ? @".%u" : @"%u", component];
+        [cleanVersionString appendFormat: _componentCount ? @".%lu" : @"%lu", component];
 
         _componentCount++;
         if (_componentCount*sizeof(*_components) > componentsBufSize) {

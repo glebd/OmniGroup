@@ -1,4 +1,4 @@
-// Copyright 2008-2011 Omni Development, Inc.  All rights reserved.
+// Copyright 2008-2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -103,7 +103,7 @@ RCS_ID("$Id$");
 
 - (NSString *)UTI;
 {
-    return OFUTIForFileExtensionPreferringNative([_name pathExtension], _directory);
+    return OFUTIForFileExtensionPreferringNative([_name pathExtension], [NSNumber numberWithBool:_directory]);
 }
 
 - (NSComparisonResult)compareByURLPath:(OFSFileInfo *)otherInfo;
@@ -113,7 +113,7 @@ RCS_ID("$Id$");
 
 - (NSComparisonResult)compareByName:(OFSFileInfo *)otherInfo;
 {
-    return [_name caseInsensitiveCompare:[otherInfo name]];
+    return [_name localizedStandardCompare:[otherInfo name]];
 }
 
 - (NSString *)shortDescription;
@@ -143,6 +143,9 @@ RCS_ID("$Id$");
 
 NSURL *OFSURLRelativeToDirectoryURL(NSURL *baseURL, NSString *quotedFileName)
 {
+    if (!baseURL || !quotedFileName)
+        return nil;
+    
     NSMutableString *urlString = [[baseURL absoluteString] mutableCopy];
     NSRange pathRange = OFSURLRangeOfPath(urlString);
     

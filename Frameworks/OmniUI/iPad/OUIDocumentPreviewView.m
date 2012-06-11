@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -16,6 +16,69 @@
 
 RCS_ID("$Id$");
 
+@interface OUIDocumentPreviewImageLayer : CALayer
+@end
+@implementation OUIDocumentPreviewImageLayer
+
+- (id<CAAction>)actionForKey:(NSString *)event;
+{
+    id <CAAction> action;
+    
+    if ([event isEqualToString:@"bounds"] ||
+        [event isEqualToString:@"position"] ||
+        // Let the shadow path resize -- we don't care to animate the color, so don't. Probabliy don't need to animate the opacity either.
+        [event isEqualToString:@"shadowPath"] ||
+        [event isEqualToString:@"shadowOpacity"]) {
+        CABasicAnimation *animation = [CABasicAnimation animationWithKeyPath:event];
+        animation.fromValue = [self valueForKey:event];
+        animation.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+        animation.fillMode = kCAFillModeBoth;
+        
+        action = animation;
+    } else
+        action = [super actionForKey:event];
+    
+    //NSLog(@"-actionForKey:%@ -> %@", event, action);
+    return action;
+}
+
+// This significantly lowers the time needed to build the animation images for OUIMainViewController when entering/leaving the document picker. kCGInterpolationNone might be overkill -- can see the aliasing change if you know to look for it.
+- (void)renderInContext:(CGContextRef)ctx;
+{
+    CGImageRef contents = (CGImageRef)self.contents;
+    if (contents == NULL)
+        return;
+    if (CFGetTypeID(contents) != CGImageGetTypeID()) {
+        OBASSERT_NOT_REACHED("contents isn't an image");
+        [super renderInContext:ctx];
+        return;
+    }
+    
+    CGContextSaveGState(ctx);
+    {
+        CGColorRef shadowColor = self.shadowColor;
+        if (shadowColor) {
+            // We assume shadowPath is just our bounds...
+            
+            CGFloat shadowRadius = self.shadowRadius;
+            CGSize shadowOffset = self.shadowOffset;
+            
+            OBASSERT(self.shadowOpacity == 1); // Not sure how CALayer would render this other than to pre-multiply it into the shadow color...
+            
+            CGContextSetShadowWithColor(ctx, shadowOffset, shadowRadius, shadowColor);
+        }
+        
+        CGRect bounds = self.bounds;
+        
+        CGContextSetInterpolationQuality(ctx, kCGInterpolationLow);
+        OQFlipVerticallyInRect(ctx, bounds);
+        CGContextDrawImage(ctx, bounds, contents);
+    }
+    CGContextRestoreGState(ctx);
+}
+
+@end
+
 @implementation OUIDocumentPreviewView
 {
     NSMutableArray *_previews;
@@ -26,20 +89,21 @@ RCS_ID("$Id$");
     BOOL _selected;
     BOOL _draggingSource;
     BOOL _highlighted;
+    BOOL _downloadRequested;
     BOOL _downloading;
     
     NSTimeInterval _animationDuration;
     UIViewAnimationCurve _animationCurve;
 
     CALayer *_selectionLayer;
-    CALayer *_imageLayer;
+    OUIDocumentPreviewImageLayer *_imageLayer;
     UIImageView *_statusImageView;
     UIProgressView *_transferProgressView;
 }
 
 static id _commonInit(OUIDocumentPreviewView *self)
 {    
-    self->_imageLayer = [[CALayer alloc] init];
+    self->_imageLayer = [[OUIDocumentPreviewImageLayer alloc] init];
     self->_imageLayer.opaque = YES;
     
     [self.layer addSublayer:self->_imageLayer];
@@ -62,6 +126,7 @@ static void _updateShouldRasterize(OUIDocumentPreviewView *self)
 {
     BOOL shouldRasterize = self->_needsAntialiasingBorder;
     self.layer.shouldRasterize = shouldRasterize;
+    self.layer.rasterizationScale = [[UIScreen mainScreen] scale];
 }
 
 - initWithFrame:(CGRect)frame;
@@ -140,6 +205,7 @@ static void _updateShouldRasterize(OUIDocumentPreviewView *self)
             CGSize imageSize = image.size;
             
             _selectionLayer.contents = (id)[image CGImage];
+            _selectionLayer.contentsScale = [image scale];
             _selectionLayer.contentsCenter = CGRectMake(kOUIDocumentPreviewViewBorderEdgeInsets.left/imageSize.width,
                                                         kOUIDocumentPreviewViewBorderEdgeInsets.top/imageSize.height,
                                                         (imageSize.width-kOUIDocumentPreviewViewBorderEdgeInsets.left-kOUIDocumentPreviewViewBorderEdgeInsets.right)/imageSize.width,
@@ -186,9 +252,7 @@ static void _updateShouldRasterize(OUIDocumentPreviewView *self)
     OBPRECONDITION([NSThread isMainThread]);
     OBPRECONDITION(preview);
     OBPRECONDITION(!_previews || [_previews indexOfObjectIdenticalTo:preview] == NSNotFound);
-    
-    OBFinishPortingLater("Maintain the previews the sorted order that our enclosing picker is using.");
-    
+        
     if (!_previews)
         _previews = [[NSMutableArray alloc] init];
     
@@ -197,7 +261,7 @@ static void _updateShouldRasterize(OUIDocumentPreviewView *self)
         [_previews removeAllObjects];
     [_previews addObject:preview];
     
-    PREVIEW_DEBUG(@"%p addPreview: %@", self, [(id)preview shortDescription]);
+    DEBUG_PREVIEW_DISPLAY(@"%p addPreview: %@", self, [(id)preview shortDescription]);
 
     // Our frame gets set by our superview based on our preview size
     [self.superview setNeedsLayout];
@@ -211,7 +275,7 @@ static void _updateShouldRasterize(OUIDocumentPreviewView *self)
     if ([_previews count] == 0)
         return;
     
-    PREVIEW_DEBUG(@"%p discardPreviews", self);
+    DEBUG_PREVIEW_DISPLAY(@"%p discardPreviews", self);
 
     [_previews removeAllObjects];
 }
@@ -276,6 +340,28 @@ static CGRect _outsetRect(CGRect rect, UIEdgeInsets insets)
     }
 }
 
+// This version allows the preview to scale up. It would be good to unify this with the other version
+- (CGRect)fitPreviewRectInFrame:(CGRect)frame;
+{
+    OBPRECONDITION([NSThread isMainThread]);
+    
+    if (_group) {
+        return CGRectInset(frame, 16, 16); // ... or something
+    } else {
+        OUIDocumentPreview *preview = [_previews lastObject];
+        
+        CGSize previewSize;
+        if (preview && preview.type == OUIDocumentPreviewTypeRegular) {
+            previewSize = preview.size;
+        } else
+            previewSize = [OUIDocumentPreview maximumPreviewSizeForLandscape:_landscape];
+
+        CGRect previewFrame = OQCenterAndFitIntegralRectInRectWithSameAspectRatioAsSize(frame, previewSize);
+        
+        return _outsetRect(previewFrame, [self _edgeInsets]);
+    }
+}
+
 - (CGRect)imageBounds;
 {
     return UIEdgeInsetsInsetRect(self.bounds, [self _edgeInsets]);
@@ -308,6 +394,17 @@ static CGRect _outsetRect(CGRect rect, UIEdgeInsets insets)
     }
     
     _updateShouldRasterize(self);
+    [self setNeedsLayout];
+}
+
+@synthesize downloadRequested = _downloadRequested;
+- (void)setDownloadRequested:(BOOL)downloadRequested;
+{
+    if (_downloadRequested == downloadRequested)
+        return;
+    
+    _downloadRequested = downloadRequested;
+
     [self setNeedsLayout];
 }
 
@@ -353,7 +450,7 @@ static CGRect _outsetRect(CGRect rect, UIEdgeInsets insets)
 }
 - (void)setProgress:(double)progress;
 {
-    OBPRECONDITION(_transferProgressView || progress == 0.0);
+    OBPRECONDITION(_transferProgressView || progress == 0.0 || progress == 1.0);
     
     _transferProgressView.progress = progress;
 }
@@ -372,7 +469,6 @@ static CGRect _outsetRect(CGRect rect, UIEdgeInsets insets)
         OUIDocumentPreview *preview = [_previews lastObject];
         
         if (preview.type == OUIDocumentPreviewTypeRegular) {
-            OBFinishPortingLater("The CGImageRef will be 2x scale from what we want, possibly");
             OBASSERT(preview.image);
             return [UIImage imageWithCGImage:preview.image];
         }
@@ -400,8 +496,9 @@ static CGRect _outsetRect(CGRect rect, UIEdgeInsets insets)
     
     CGRect previewFrame = UIEdgeInsetsInsetRect(bounds, [self _edgeInsets]);
     
-    // TODO: Placeholder images -- make the preview generation build pre-composited images
-    OUIWithoutLayersAnimating(^{
+    // We do need this to animate when entering/leaving rename mode in the document picker.
+    //NSLog(@"%p animations UI:%d CA:%d %@", self, [UIView areAnimationsEnabled], ![CATransaction disableActions], NSStringFromCGRect(previewFrame));
+    OUIWithAppropriateLayerAnimations(^{
         _imageLayer.frame = previewFrame;
     });
 
@@ -410,14 +507,14 @@ static CGRect _outsetRect(CGRect rect, UIEdgeInsets insets)
         // Want to add multiple image layers? Want to force the caller to pre-composite a 3x3 grid of preview images?        
         OBASSERT(self.superview.hidden);
     } else {
-        _imageLayer.contents = (id)[[_previews lastObject] image];
+        _imageLayer.contents = (id)[(OUIDocumentPreview *)[_previews lastObject] image];
     }
     
     // Highlighting (image alpha)
     {
         CGFloat alpha = 1;
         
-        if (_highlighted)
+        if (_highlighted || _downloadRequested)
             alpha = 0.5;
         
         _imageLayer.opacity = alpha;
@@ -426,13 +523,13 @@ static CGRect _outsetRect(CGRect rect, UIEdgeInsets insets)
     // Shadow
     if (_selected || _draggingSource) {
         // No shadow
-        OUIWithoutLayersAnimating(^{
+        OUIWithAppropriateLayerAnimations(^{
             _imageLayer.shadowPath = NULL;
             _imageLayer.shadowColor = NULL;
             _imageLayer.shadowOpacity = 0;
         });
     } else {
-        OUIWithoutLayersAnimating(^{
+        OUIWithAppropriateLayerAnimations(^{
             CGPathRef path = CGPathCreateWithRect(CGRectMake(0, 0, previewFrame.size.width, previewFrame.size.height), NULL/*transform*/);
             _imageLayer.shadowPath = path;
             CFRelease(path);
@@ -464,6 +561,7 @@ static CGRect _outsetRect(CGRect rect, UIEdgeInsets insets)
         if (statusImage) {
             CGSize statusImageSize = statusImage.size;
             CGRect statusFrame = CGRectMake(CGRectGetMaxX(previewFrame) - statusImageSize.width, CGRectGetMinY(previewFrame), statusImageSize.width, statusImageSize.height);
+            OB_UNUSED_VALUE(statusFrame); // http://llvm.org/bugs/show_bug.cgi?id=11576 Use in block doesn't count as use to prevent dead store warning
             
             OUIWithoutAnimating(^{
                 _statusImageView.frame = statusFrame;
@@ -483,126 +581,6 @@ static CGRect _outsetRect(CGRect rect, UIEdgeInsets insets)
         });
     }
 }
-
-#if 0
-- (void)drawRect:(CGRect)rect;
-{
-    if (_group) {
-        // Disabled for now since we get added to the view hierarchy and drawn once while we are hidden (during closing a document, for example), as previews are loading.
-        //OBASSERT([_previews count] >= 1); // can have a group with 1 item
-
-        // 3x3 grid of previews
-        const CGFloat kPreviewPadding = 8;
-        const NSUInteger kPreviewsPerRow = 3;
-        const NSUInteger kPreviewRows = 3;
-        
-        CGRect bounds = self.bounds;
-        CGSize previewSize = CGSizeMake((bounds.size.width - (kPreviewsPerRow + 1)*kPreviewPadding) / kPreviewsPerRow,
-                                        (bounds.size.height - (kPreviewRows + 1)*kPreviewPadding) / kPreviewRows);
-        
-        [[UIColor blackColor] set];
-        UIRectFill(bounds);
-        
-        OBFinishPortingLater("Do a gray overlay for highlighting"); // iWork highlights folders as they are opening and on long press (though long press does nothing interesting).
-        
-        NSUInteger previewCount = [_previews count];
-        for (NSUInteger row = 0; row < kPreviewRows; row++) {
-            for (NSUInteger column = 0; column < kPreviewsPerRow; column++) {
-                NSUInteger previewIndex = row * kPreviewsPerRow + column;
-                if (previewIndex >= previewCount)
-                    break;
-                
-                CGPoint pt = bounds.origin;
-                pt.x += ceil(column * previewSize.width + kPreviewPadding);
-                pt.y += ceil(row * previewSize.height + kPreviewPadding);
-                
-                OUIDocumentPreview *preview = [_previews objectAtIndex:previewIndex];
-
-                [preview drawInRect:CGRectMake(pt.x, pt.y, previewSize.width, previewSize.height)];
-            }
-        }
-    } else {
-        OBASSERT([_previews count] <= 1);
-        
-        CGRect previewRect = CGRectInset(self.bounds, 1, 1); // space for edge antialiasing
-              
-        if (_draggingSource) {
-            OBFinishPortingLater("Do empty box look");
-            
-            [[UIColor blueColor] set];
-            UIRectFill(previewRect);
-            
-        } else {
-            OUIDocumentPreview *preview = [_previews lastObject];
-            CGContextRef ctx = UIGraphicsGetCurrentContext();
-            
-            BOOL drawingShadow = NO;
-            
-            if (_selected) {
-                UIImage *image = [UIImage imageNamed:@"OUIDocumentPreviewViewSelectedBorder.png"];
-                OBASSERT(image);
-                
-                image = [image resizableImageWithCapInsets:kOUIDocumentPreviewViewBorderEdgeInsets];
-                [image drawInRect:previewRect];
-                
-                previewRect = UIEdgeInsetsInsetRect(previewRect, kOUIDocumentPreviewViewBorderEdgeInsets);
-            } else if (_draggingSource) {
-                // No shadow
-            } else {
-                // Normal preview
-                drawingShadow = YES;
-                CGContextSaveGState(ctx);
-                
-                CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceGray();
-                CGFloat shadowComponents[] = {kOUIDocumentPreviewViewNormalShadowWhiteAlpha.w, kOUIDocumentPreviewViewNormalShadowWhiteAlpha.a};
-                CGColorRef shadowColor = CGColorCreate(colorSpace, shadowComponents);
-                CGColorSpaceRelease(colorSpace);
-                
-                CGContextSetShadowWithColor(ctx, CGSizeMake(0, 1), kOUIDocumentPreviewViewNormalShadowBlur, shadowColor);
-                CGColorRelease(shadowColor);
-                
-                // Leave room for the shadow
-                previewRect = UIEdgeInsetsInsetRect(previewRect, kOUIDocumentPreviewViewNormalShadowInsets);
-            }
-            
-            BOOL isPlaceholder = (!preview || preview.type != OUIDocumentPreviewTypeRegular);
-            if (isPlaceholder) {
-                [[UIColor whiteColor] set];
-                UIRectFill(previewRect);
-                
-                // In this case the white box has the shadow and we don't want the preview to be shadowed *too*
-                if (drawingShadow) {
-                    CGContextRestoreGState(ctx);
-                    drawingShadow = NO;
-                }
-            }
-            
-            CGRect previewImageRect = previewRect;
-            if (preview && isPlaceholder)
-                previewImageRect = OQLargestCenteredIntegralRectInRectWithAspectRatioAsSize(previewRect, preview.size);
-            [preview drawInRect:previewImageRect];
-
-            if (drawingShadow) {
-                CGContextRestoreGState(ctx);
-            }
-            
-            if (_highlighted || _downloading) {
-                CGContextSaveGState(ctx);
-                                
-                CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceGray();
-                CGContextSetFillColorSpace(ctx, colorSpace);
-                CGColorSpaceRelease(colorSpace);
-
-                CGFloat highlight[] = {0, kOUIDocumentPreviewHighlightAlpha};
-                CGContextSetFillColor(ctx, highlight);
-                
-                CGContextFillRect(ctx, previewRect);
-                CGContextRestoreGState(ctx);
-            }
-        }
-    }
-}
-#endif
 
 @end
 

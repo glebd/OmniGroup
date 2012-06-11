@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -47,9 +47,10 @@ RCS_ID("$Id$");
         
     // Layout in the full width, divvying up fractional pixels.
     NSUInteger segmentCount = [_segments count];
+    CGFloat totalWidth = OUIInspectorContentWidth - (segmentCount - 1); // remove space taken by the 1px separators between each segment
     for (NSUInteger segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
-        CGFloat left = ceil(segmentIndex * OUIInspectorContentWidth / segmentCount);
-        CGFloat right = ceil((segmentIndex + 1) * OUIInspectorContentWidth / segmentCount);
+        CGFloat left = ceil(segmentIndex * totalWidth / segmentCount);
+        CGFloat right = ceil((segmentIndex + 1) * totalWidth / segmentCount);
         [_titleSegmentedControl setWidth:right - left forSegmentAtIndex:segmentIndex];
     }
     
@@ -66,11 +67,13 @@ RCS_ID("$Id$");
 {
     [_selectedSegment release];
     [_segments release];
+    
+    [_titleSegmentedControl removeFromSuperview];
+    [_titleSegmentedControl removeAllSegments];
     [_titleSegmentedControl release];
     
     [super dealloc];
 }
-
 
 - (NSArray *)makeAvailableSegments; // For subclasses
 {

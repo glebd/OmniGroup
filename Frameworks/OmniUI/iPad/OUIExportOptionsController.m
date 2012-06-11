@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group.  All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -19,6 +19,7 @@
 #import <OmniUI/OUIBarButtonItem.h>
 #import <OmniUI/OUIDocumentPicker.h>
 #import <OmniFileStore/OFSDocumentStoreFileItem.h>
+#import <OmniUnzip/OUZipArchive.h>
 
 #import "OUICredentials.h"
 #import "OUIExportOptionsView.h"
@@ -294,38 +295,57 @@ static NSString * const OUIExportInfoExportType = @"OUIExportInfoExportType";
     
     // Write to temp folder (need URL of file on disk to pass off to Doc Interaction.)
     NSString *temporaryDirectory = NSTemporaryDirectory();
-    NSString *fullTempPath = [temporaryDirectory stringByAppendingPathComponent:[fileWrapper preferredFilename]];
-    NSURL *tempURL = [NSURL fileURLWithPath:fullTempPath isDirectory:[fileWrapper isDirectory]];
+    NSString *tempPath = [temporaryDirectory stringByAppendingPathComponent:[fileWrapper preferredFilename]];
+    NSURL *tempURL = nil;
     
-    // Get a FileManager for our Temp Directory.
-    NSError *error = nil;
-    OFSFileManager *tempFileManager = [[[OFSFileManager alloc] initWithBaseURL:tempURL error:&error] autorelease];
-    if (error) {
-        OUI_PRESENT_ERROR(error);
-        return;
-    }
-    
-    // Get the FileInfo for where we want to place the temp file.
-    OFSFileInfo *fileInfo = [tempFileManager fileInfoAtURL:tempURL error:&error];
-    if (error) {
-        OUI_PRESENT_ERROR(error);
-        return;
-    }
-    
-    // If the temp file exists, we delete it.
-    if ([fileInfo exists] == YES) {
-        [tempFileManager deleteURL:tempURL error:&error];
+    if ([fileWrapper isDirectory]) {
+        // We need to zip this mother up!
+        NSString *tempZipPath = [tempPath stringByAppendingPathExtension:@"zip"];
         
+        NSError *error = nil;
+        OMNI_POOL_START {
+            if (![OUZipArchive createZipFile:tempZipPath fromFileWrappers:[NSArray arrayWithObject:fileWrapper] error:&error]) {
+                OUI_PRESENT_ERROR(error);
+                return;
+            }
+        } OMNI_POOL_END;
+
+        tempURL = [NSURL fileURLWithPath:tempZipPath];
+    }
+    else {
+        tempURL = [NSURL fileURLWithPath:tempPath isDirectory:[fileWrapper isDirectory]];
+        
+        // Get a FileManager for our Temp Directory.
+        NSError *error = nil;
+        OFSFileManager *tempFileManager = [[[OFSFileManager alloc] initWithBaseURL:tempURL error:&error] autorelease];
         if (error) {
             OUI_PRESENT_ERROR(error);
             return;
         }
-    }
-    
-    // Write to temp dir.
-    if (![fileWrapper writeToURL:tempURL options:0 originalContentsURL:nil error:&error]) {
-        OUI_PRESENT_ERROR(error);
-        return;
+        
+        // Get the FileInfo for where we want to place the temp file.
+        OFSFileInfo *fileInfo = [tempFileManager fileInfoAtURL:tempURL error:&error];
+        if (error) {
+            OUI_PRESENT_ERROR(error);
+            return;
+        }
+        
+        // If the temp file exists, we delete it.
+        if ([fileInfo exists] == YES) {
+            [tempFileManager deleteURL:tempURL error:&error];
+            
+            if (error) {
+                OUI_PRESENT_ERROR(error);
+                return;
+            }
+        }
+        
+        // Write to temp dir.
+        if (![fileWrapper writeToURL:tempURL options:0 originalContentsURL:nil error:&error]) {
+            OUI_PRESENT_ERROR(error);
+            return;
+        }
+        
     }
     
     [self _foreground_enableInterfaceAfterExportConversion];
@@ -348,11 +368,7 @@ static NSString * const OUIExportInfoExportType = @"OUIExportInfoExportType";
             return;
         }
         
-        __block NSError *error = nil;
-        __block NSFileWrapper *fileWrapper;
-        
-        // Using a block here so that we can easily execute the same code no matter how we get the fileWrapper below.
-        void (^handler)(NSFileWrapper *fileWrapper, NSError *error) = ^(NSFileWrapper *fileWrapper, NSError *error) {
+        [documentPicker exportFileWrapperOfType:fileType forFileItem:fileItem withCompletionHandler:^(NSFileWrapper *fileWrapper, NSError *error) {
             // Need to make sure all of this happens on the mail thread.
             main_async(^{
                 if (fileWrapper == nil) {
@@ -362,23 +378,7 @@ static NSString * const OUIExportInfoExportType = @"OUIExportInfoExportType";
                     [self _foreground_exportFileWrapper:fileWrapper];
                 }
             });
-        };
-        
-        if (OFISNULL(fileType)) {
-            // The 'nil' type is always first in our list of types, so we can eport the original file as is w/o going through any app specific exporter.
-            // NOTE: This is important for OO3 where the exporter has the ability to rewrite the document w/o hidden columns, in sorted order, with summary values (and eventually maybe with filtering). If we want to support untransformed exporting through the OO XML exporter, it will need to be configurable via settings on the OOXSLPlugin it uses. For now it assumes all 'exports' want all the transformations.
-            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
-                           ^{
-                               fileWrapper = [[[NSFileWrapper alloc] initWithURL:fileItem.fileURL options:0 error:&error] autorelease];
-                               
-                               if (handler) {
-                                   handler(fileWrapper, error);
-                               }
-
-                           });
-        } else {
-            [documentPicker exportFileWrapperOfType:fileType forFileItem:fileItem withCompletionHandler:handler];
-        }
+        }];
     } OMNI_POOL_END;
 }
 
@@ -522,7 +522,12 @@ static NSString * const OUIExportInfoExportType = @"OUIExportInfoExportType";
             [self cancel:nil];
             break;
         default:
-            [self signOut:nil];
+            OBASSERT_NOT_REACHED("Unexpected OUIWebDAVConnectionValidity.");
+            NSDictionary *userInfo = [NSDictionary dictionaryWithObjectsAndKeys:
+                                      NSLocalizedStringFromTableInBundle(@"Error connecting to the WebDAV server.", @"OmniUI", OMNI_BUNDLE, @"Generic error for connecting to WebDAV."), NSLocalizedDescriptionKey,
+                                      nil];
+            NSError *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileNoSuchFileError userInfo:userInfo];
+            OUI_PRESENT_ERROR(error);
             break;
     }
 }

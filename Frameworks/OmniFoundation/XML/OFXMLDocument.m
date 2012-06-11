@@ -1,4 +1,4 @@
-// Copyright 2003-2005, 2007-2008, 2010-2011 Omni Development, Inc.  All rights reserved.
+// Copyright 2003-2005, 2007-2008, 2010-2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -366,6 +366,13 @@ RCS_ID("$Id$");
     [_elementStack removeLastObject];
 }
 
+- (void) addElement:(NSString *)elementName childBlock:(void (^)(void))block;
+{
+    [self pushElement:elementName];
+    block();
+    [self popElement];
+}
+
 - (OFXMLElement *) topElement;
 {
     return [_elementStack lastObject];
@@ -618,7 +625,7 @@ RCS_ID("$Id$");
 
     [debugDictionary setObject: _rootElement forKey: @"_rootElement"];
 
-    [debugDictionary setObject: [NSString stringWithFormat: @"0x%08x", _stringEncoding] forKey: @"_stringEncoding"];
+    [debugDictionary setObject: [NSString stringWithFormat: @"0x%08lx", (unsigned long)_stringEncoding] forKey: @"_stringEncoding"];
 
     if (_whitespaceBehavior)
         [debugDictionary setObject: _whitespaceBehavior forKey: @"_whitespaceBehavior"];

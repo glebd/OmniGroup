@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -25,6 +25,7 @@ typedef enum {
 @interface OUIDocumentPickerItemView : UIView
 
 @property(assign,nonatomic) BOOL landscape;
+@property(nonatomic,assign) BOOL ubiquityEnabled;
 @property(retain,nonatomic) OFSDocumentStoreItem *item; // either a file or group
 
 @property(assign,nonatomic) BOOL animatingRotationChange;

@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -67,6 +67,9 @@ static id _commonInit(OUIUndoBarButtonItem *self)
     [self->_undoButton sizeToFit];
     self.customView = self->_undoButton;
 
+    // adjust the text label because UIButton and UITitleBarButton place their labels 1 apple point off from each other by default.
+    [self->_undoButton setTitleEdgeInsets:UIEdgeInsetsMake(0,0,1,0)];
+    
     [self->_undoButton addTarget:self action:@selector(_touchDown:) forControlEvents:UIControlEventTouchDown];
 
     self->_tapRecoginizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(_undoButtonTap:)];

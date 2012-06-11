@@ -1,4 +1,4 @@
-// Copyright 2008-2011 Omni Development, Inc.  All rights reserved.
+// Copyright 2008-2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -19,11 +19,11 @@
 RCS_ID("$Id$");
 
 #if 0 && defined(DEBUG)
-#define LOG_ANIMATIONS
+#define LOG_CONTENT_FILLING
 #endif
 
 #if 0 && defined(DEBUG)
-#define LOG_CONTENT_FILLING
+#define LOG_RENDER_IN_CONTEXT_TIME
 #endif
 
 #if 0 && defined(DEBUG)
@@ -80,9 +80,37 @@ static void replacement_setNeedsDisplayInRect(CALayer *self, SEL _cmd, CGRect fr
 }
 #endif
 
-#if defined(LOG_ANIMATIONS)
-static void (*original_addAnimation)(CALayer *self, SEL _cmd, CAAnimation *animation, NSString *key) = NULL;
-static void replacement_addAnimation(CALayer *self, SEL _cmd, CAAnimation *animation, NSString *key)
+#if defined(OQ_ANIMATION_LOGGING_ENABLED)
+
+static NSString * const OQAnimationLoggingEnabled = @"OQAnimationLoggingEnabled";
+
+// We never remove the key, but always set a boolean. This could allow you to turn this on for a parent layer, but off for individual subtrees
+void OQSetAnimationLoggingEnabledForLayer(CALayer *layer, BOOL enabled)
+{
+    // Not that an animation would ever be set up for this key, but let's just avoid even asking.
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    [layer setValue:enabled ? (id)kCFBooleanTrue : (id)kCFBooleanFalse forKey:OQAnimationLoggingEnabled];
+    [CATransaction commit];
+}
+
+// Right now this doesn't consider the key, but we could make the annotation specify a dictionary of key->BOOL with a default value (so you can enable animations by default but turn off some keys). Haven't needed this yet.
+static BOOL OQIsAnimationLoggingEnabledForLayer(CALayer *layer, NSString *key)
+{
+#ifdef OQ_LOG_ALL_ANIMATIONS
+    return YES;
+#else
+    while (layer) {
+        NSNumber *enabled = [layer valueForKey:OQAnimationLoggingEnabled];
+        if (enabled)
+            return [enabled boolValue];
+        layer = layer.superlayer;
+    }
+    return NO;
+#endif
+}
+
+static void logAnimation(CALayer *self, CAAnimation *animation, NSString *key)
 {
     NSLog(@"%@=%@ delegate:%@ addAnimation:%@ forKey:%@", self.name, [self shortDescription], [self.delegate shortDescription], animation, key);
     
@@ -114,7 +142,7 @@ static void replacement_addAnimation(CALayer *self, SEL _cmd, CAAnimation *anima
     
     NSLog(@"  beginTime:%g duration:%g speed:%g timeOffset:%g repeatCount:%g repeatDuration:%g autoreverses:%d fillMode:%@", animation.beginTime, animation.duration, animation.speed, animation.timeOffset, animation.repeatCount, animation.repeatDuration, animation.autoreverses, animation.fillMode);
     NSLog(@"  removedOnCompletion:%d", animation.removedOnCompletion);
-
+    
     if ([animation isKindOfClass:[CAPropertyAnimation class]]) {
         CAPropertyAnimation *prop = (CAPropertyAnimation *)animation;
         NSLog(@"  keyPath:%@ additive:%d cumulative:%d valueFunction:%@", prop.keyPath, prop.additive, prop.cumulative, prop.valueFunction);
@@ -127,8 +155,12 @@ static void replacement_addAnimation(CALayer *self, SEL _cmd, CAAnimation *anima
         CATransition *trans = (CATransition *)animation;
         NSLog(@"  type:%@ subtype:%@ start:%g end:%g filter:%@", trans.type, trans.subtype, trans.startProgress, trans.endProgress, trans.filter);
     }
-    
-    
+}
+static void (*original_addAnimation)(CALayer *self, SEL _cmd, CAAnimation *animation, NSString *key) = NULL;
+static void replacement_addAnimation(CALayer *self, SEL _cmd, CAAnimation *animation, NSString *key)
+{
+    if (OQIsAnimationLoggingEnabledForLayer(self, key))
+        logAnimation(self, animation, key);
     original_addAnimation(self, _cmd, animation, key);
 }
 #endif
@@ -142,19 +174,40 @@ static void replacement_drawInContext(CALayer *self, SEL _cmd, CGContextRef ctx)
 }
 #endif
 
+#if defined(LOG_RENDER_IN_CONTEXT_TIME)
+static void (*original_renderInContext)(CALayer *self, SEL _cmd, CGContextRef ctx) = NULL;
+static void replacement_renderInContext(CALayer *self, SEL _cmd, CGContextRef ctx)
+{
+    CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
+    original_renderInContext(self, _cmd, ctx);
+    CFAbsoluteTime end = CFAbsoluteTimeGetCurrent();
+
+    NSLog(@"%@=%@ renderInContext:%p delegate:%@ %f", self.name, [self shortDescription], ctx, [[self delegate] shortDescription], end - start);
+}
+#endif
+
 // No OBPostLoader on our iPhone OS builds, so splitting this out.
 static void OQEnableAnimationLogging(void) __attribute__((constructor));
 static void OQEnableAnimationLogging(void)
 {
-#if defined(LOG_ANIMATIONS)
+#if defined(OQ_ANIMATION_LOGGING_ENABLED)
     if (original_addAnimation)
         return;
     original_addAnimation = (typeof(original_addAnimation))OBReplaceMethodImplementation([CALayer class], @selector(addAnimation:forKey:), (IMP)replacement_addAnimation);
 #endif
 }
 
+static void OQEnableRenderInContextLogging(void) __attribute__((constructor));
+static void OQEnableRenderInContextLogging(void)
+{
+#if defined(LOG_RENDER_IN_CONTEXT_TIME)
+    if (original_renderInContext)
+        return;
+    original_renderInContext = (typeof(original_renderInContext))OBReplaceMethodImplementation([CALayer class], @selector(renderInContext:), (IMP)replacement_renderInContext);
+#endif
+}
 
-#if defined(LOG_ANIMATIONS) || defined(LOG_CONTENT_FILLING) || defined(OMNI_ASSERTIONS_ON)
+#if defined(OQ_ANIMATION_LOGGING_ENABLED) || defined(LOG_CONTENT_FILLING) || defined(LOG_RENDER_IN_CONTEXT_TIME) || defined(OMNI_ASSERTIONS_ON)
 + (void)performPosing;
 {
 #if defined(OMNI_ASSERTIONS_ON)
@@ -169,11 +222,14 @@ static void OQEnableAnimationLogging(void)
     original_setNeedsDisplay = (typeof(original_setNeedsDisplay))OBReplaceMethodImplementation(self, @selector(setNeedsDisplay), (IMP)replacement_setNeedsDisplay);
     original_setNeedsDisplayInRect = (typeof(original_setNeedsDisplayInRect))OBReplaceMethodImplementation(self, @selector(setNeedsDisplayInRect:), (IMP)replacement_setNeedsDisplayInRect);
 #endif
-#if defined(LOG_ANIMATIONS)
+#if defined(OQ_ANIMATION_LOGGING_ENABLED)
     OQEnableAnimationLogging();
 #endif
 #if defined(LOG_CONTENT_FILLING)
     original_drawInContext = (typeof(original_drawInContext))OBReplaceMethodImplementation(self, @selector(drawInContext:), (IMP)replacement_drawInContext);
+#endif
+#if defined(LOG_RENDER_IN_CONTEXT_TIME)
+    OQEnableRenderInContextLogging();
 #endif
 }
 #endif
@@ -323,8 +379,8 @@ static void _writeString(NSString *str)
 #if !defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE
         if ([delegate isKindOfClass:[NSView class]]) {
             NSView *view = delegate;
-            [str appendFormat:@" redraw:%d", view.layerContentsRedrawPolicy];
-            [str appendFormat:@" placement:%d", view.layerContentsPlacement];
+            [str appendFormat:@" redraw:%ld", view.layerContentsRedrawPolicy];
+            [str appendFormat:@" placement:%ld", view.layerContentsPlacement];
         }
 #endif
     }
@@ -462,18 +518,11 @@ static void _writeString(NSString *str)
     return self == self.modelLayer;
 }
 
-// Deprecated since -presentationLayer always returns a new autoreleased copy. Wasteful!
-- (BOOL)isPresentationLayer;
-{
-    return self == self.presentationLayer;
-}
-
 - (BOOL)drawInVectorContext:(CGContextRef)ctx;
 {
     return NO;
 }
 
-#if !defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE
 - (void)renderInContextIgnoringCache:(CGContextRef)ctx;
 {
     [self renderInContextIgnoringCache:ctx useAnimatedValues:YES];
@@ -504,7 +553,7 @@ static void _writeString(NSString *str)
     //OBASSERT(GET_VALUE(geometryFlipped) == NO); // Need to flip the CTM ourselves for this property added in 10.6
     OBASSERT(GET_VALUE(isDoubleSided)); // Not handling back face culling.
     OBASSERT(GET_VALUE(mask) == nil); // Not handling mask layers or any filters
-    OBASSERT(NSEqualRects(GET_VALUE(contentsRect), NSMakeRect(0, 0, 1, 1))); // Should be showing the full content
+    OBASSERT(CGRectEqualToRect(GET_VALUE(contentsRect), CGRectMake(0, 0, 1, 1))); // Should be showing the full content
     OBASSERT(GET_VALUE(borderWidth) == 0.0);
     OBASSERT(GET_VALUE(compositingFilter) == nil);
     OBASSERT([GET_VALUE(filters) count] == 0);
@@ -587,7 +636,7 @@ static void _writeString(NSString *str)
             } else
                 CGContextAddRect(ctx, localBounds);
 
-            if (backgroundColor && !CGColorEqualToColor(backgroundColor, CGColorGetConstantColor(kCGColorClear))) {
+            if (backgroundColor && CGColorGetAlpha(borderColor) != 0.0f) {
                 CGContextSetFillColorWithColor(ctx, backgroundColor);
                 CGContextFillPath(ctx);
             }
@@ -616,7 +665,7 @@ static void _writeString(NSString *str)
             }
         }
         
-        if (self.borderWidth && borderColor && !CGColorEqualToColor(borderColor, CGColorGetConstantColor(kCGColorClear))) {
+        if (self.borderWidth && borderColor && CGColorGetAlpha(borderColor) != 0.0f) {
             // the clipping & path was already set above while doing the background
             CGContextSetLineWidth(ctx, self.borderWidth);
             CGContextSetStrokeColorWithColor(ctx, borderColor);
@@ -678,6 +727,8 @@ static void _writeString(NSString *str)
     }
     CGContextRestoreGState(ctx);
 }
+
+#if !defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE
 
 - (NSImage *)imageForRect:(NSRect)rect useAnimatedValues:(BOOL)useAnimatedValues;
 {

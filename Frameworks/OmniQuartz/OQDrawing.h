@@ -1,4 +1,4 @@
-// Copyright 2003-2011 Omni Development, Inc.  All rights reserved.
+// Copyright 2003-2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -19,11 +19,25 @@ extern void OQSetPatternColorReferencePoint(CGPoint point, NSView *view);
 #import <CoreGraphics/CoreGraphics.h>
 #endif
 
+// 
 // Rounded rect support.
+// 
+
+typedef enum {
+    OQRoundedRectCornerNone,
+    OQRoundedRectCornerTopLeft = 0x1,
+    OQRoundedRectCornerTopRight = 0x2,
+    OQRoundedRectCornerBottomRight = 0x4,
+    OQRoundedRectCornerBottomLeft = 0x8,
+} OQRoundedRectCorner;
+
+// These assume a non-flipped coordinate system (top == CGRectGetMaxY, bottom == CGRectGetMinY)
 extern void OQAppendRoundedRect(CGContextRef ctx, CGRect rect, CGFloat radius);
 extern void OQAddRoundedRect(CGMutablePathRef path, CGRect rect, CGFloat radius);
 
-// These all assume a flipped coordinate system (top == CGRectGetMinY, bottom == CGRectGetMaxY)
+// These assume a flipped coordinate system (top == CGRectGetMinY, bottom == CGRectGetMaxY)
+extern void OQAppendRectWithRoundedCornerMask(CGContextRef ctx, CGRect rect, CGFloat radius, NSUInteger cornerMask);
+
 extern void OQAppendRectWithRoundedTop(CGContextRef ctx, CGRect rect, CGFloat radius, BOOL closeBottom);
 extern void OQAppendRectWithRoundedTopRight(CGContextRef ctx, CGRect rect, CGFloat radius, BOOL closeBottom);
 extern void OQAppendRectWithRoundedTopLeft(CGContextRef ctx, CGRect rect, CGFloat radius, BOOL closeBottom);
@@ -33,9 +47,7 @@ extern void OQAppendRectWithRoundedBottomLeft(CGContextRef ctx, CGRect rect, CGF
 extern void OQAppendRectWithRoundedBottomRight(CGContextRef ctx, CGRect rect, CGFloat radius, BOOL closeTop);
 
 extern void OQAppendRectWithRoundedLeft(CGContextRef ctx, CGRect rect, CGFloat radius, BOOL closeRight);
-
 extern void OQAppendRectWithRoundedRight(CGContextRef ctx, CGRect rect, CGFloat radius, BOOL closeLeft);
-
 
 // Updates the CTM so that the lower/upper edges of the rect are swapped.
 static inline void OQFlipVerticallyInRect(CGContextRef ctx, CGRect rect)
@@ -45,11 +57,16 @@ static inline void OQFlipVerticallyInRect(CGContextRef ctx, CGRect rect)
 
 extern CGRect OQCenteredIntegralRectInRect(CGRect enclosingRect, CGSize toCenter);
 extern CGRect OQLargestCenteredIntegralRectInRectWithAspectRatioAsSize(CGRect enclosingRect, CGSize toCenter);
+extern CGRect OQCenterAndFitIntegralRectInRectWithSameAspectRatioAsSize(CGRect enclosingRect, CGSize toCenter);
 
 #if TARGET_OS_IPHONE
 extern void OQDrawImageCenteredInRect(CGContextRef ctx, UIImage *image, CGRect rect);
 #endif
 extern void OQDrawCGImageWithScaleCenteredInRect(CGContextRef ctx, CGImageRef image, CGFloat scale, CGRect rect);
+
+extern void OQPreflightImage(CGImageRef image);
+extern CGImageRef OQCopyFlattenedImage(CGImageRef image);
+extern CGImageRef OQCreateImageWithSize(CGImageRef image, CGSize size, CGInterpolationQuality interpolationQuality);
 
 void OQCrosshatchRect(CGContextRef ctxt, CGRect rect, CGFloat lineWidth, CGFloat dx, CGFloat dy);
 

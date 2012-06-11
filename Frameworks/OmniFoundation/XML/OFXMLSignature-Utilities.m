@@ -1,11 +1,11 @@
-// Copyright 2009-2011 Omni Development, Inc. All rights reserved.
+// Copyright 2009-2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
 // distributed with this project and can also be found at
 // <http://www.omnigroup.com/developer/sourcecode/sourcelicense/>.
 
-#import "OFXMLSignature.h"
+#import <OmniFoundation/OFXMLSignature.h>
 
 #import <Foundation/Foundation.h>
 #import <OmniBase/OmniBase.h>
@@ -25,6 +25,11 @@
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
 #include <libxml/xpointer.h>
+
+#if defined(MAC_OS_X_VERSION_10_7) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_7 && MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_7
+// If we allow 10.7 API but also support 10.6, then we need to weakly import these Security.framework symbols or we won't be able to launch on 10.6.
+extern CFDictionaryRef SecCertificateCopyValues(SecCertificateRef certificate, CFArrayRef keys, CFErrorRef *error) __attribute__((weak_import));
+#endif
 
 RCS_ID("$Id$");
 
@@ -997,7 +1002,7 @@ NSString *OFSummarizeTrustResult(SecTrustRef evaluationContext)
         NSDictionary *c = (NSDictionary *)CFArrayGetValueAtIndex(certProperties, i);
         [buf appendFormat:@"\n  "];
         for (NSString *k in c) {
-            [buf appendFormat:@" %s=%s", k, [[c objectForKey:k] description]];
+            [buf appendFormat:@" %@=%@", k, [[c objectForKey:k] description]];
         }
     }
     CFRelease(certProperties);

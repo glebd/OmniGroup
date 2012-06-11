@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -16,9 +16,10 @@
 @class NSMetadataItem;
 
 @interface OFSDocumentStoreFileItem (/*Internal*/)
-- (void)_updateWithMetadataItem:(NSMetadataItem *)metdataItem;
-- (void)_suspendFilePresenter;
-- (void)_resumeFilePresenter;
+
+- (void)_updateUbiquitousItemWithMetadataItem:(NSMetadataItem *)metadataItem modificationDate:(NSDate *)modificationDate;
+- (void)_updateLocalItemWithModificationDate:(NSDate *)modificationDate;
+
 @end
 
 #endif // OFS_DOCUMENT_STORE_SUPPORTED

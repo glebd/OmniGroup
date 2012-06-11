@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -30,6 +30,7 @@
 - (CGFloat)paddingToInspectorBottom; // For the bottom slice
 - (CGFloat)paddingToPreviousSlice:(OUIInspectorSlice *)previousSlice remainingHeight:(CGFloat)remainingHeight;
 - (CGFloat)paddingToInspectorSides; // Left/right
+- (CGFloat)minimumHeight; // When the view has UIViewAutoresizingFlexibleHeight, the minimum height the slice can have. Defaults to kOUIInspectorWellHeight.
 
 - (void)sizeChanged;
 

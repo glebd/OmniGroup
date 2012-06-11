@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -13,10 +13,10 @@
 
 @interface OUIDocumentStoreSetupViewController : OUIViewController <UITableViewDelegate, UITableViewDataSource>
 
-- initWithDismissAction:(void (^)(BOOL cancelled))dismissAction;
+- initWithOriginalState:(BOOL)originalUseICloud dismissAction:(void (^)(BOOL cancelled))dismissAction;
 
-@property(readonly,nonatomic) BOOL useICloud;
-@property(readonly,nonatomic) BOOL moveExistingDocumentsToICloud;
+@property(nonatomic) BOOL useICloud;
+@property(nonatomic) BOOL shouldMigrateExistingDocuments; // Move when going into iCloud, copy when migrating out.
 
 - (void)cancel;
 

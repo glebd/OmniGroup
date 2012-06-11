@@ -1,4 +1,4 @@
-// Copyright 1997-2011 Omni Development, Inc.  All rights reserved.
+// Copyright 1997-2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -80,16 +80,21 @@ extern void _OBRejectInvalidCall(id self, SEL _cmd, const char *file, unsigned i
 #define OBRejectInvalidCall(self, sel, format, ...) _OBRejectInvalidCall((self), (sel), __FILE__, __LINE__, (format), ## __VA_ARGS__)
 
 // A common pattern when refactoring or updating code is to #if 0 out portions that haven't been updated and leave a marker there.  This function serves as the 'to do' marker and allows you to demand-port the remaining code after working out the general structure.
-extern void _OBFinishPorting(const char *function, const char *file, unsigned int line) NORETURN;
-#define OBFinishPorting _OBFinishPorting(__PRETTY_FUNCTION__, __FILE__, __LINE__)
+// NOTE: The formatting of the "header" argument is formulated so you can run 'strings' on your binary and find a list of all the file:line locations of these.
+extern void _OBFinishPorting(const char *header, const char *function) NORETURN;
+#define _OBFinishPorting_(file, line, function) _OBFinishPorting("OBFinishPorting at " file ":" #line, function)
+#define _OBFinishPorting__(file, line, function) _OBFinishPorting_(file, line, function)
+#define OBFinishPorting _OBFinishPorting__(__FILE__, __LINE__, __PRETTY_FUNCTION__)
 
 // Something that needs porting, but not immediately
-extern void _OBFinishPortingLater(const char *function, const char *file, unsigned int line, const char *msg);
+extern void _OBFinishPortingLater(const char *header, const char *function, const char *message);
+#define _OBFinishPortingLater_(file, line, function, message) _OBFinishPortingLater("OBFinishPortingLater at " file ":" #line, function, (message))
+#define _OBFinishPortingLater__(file, line, function, message) _OBFinishPortingLater_(file, line, function, (message))
 #define OBFinishPortingLater(msg) do { \
     static BOOL warned = NO; \
     if (!warned) { \
         warned = YES; \
-        _OBFinishPortingLater(__PRETTY_FUNCTION__, __FILE__, __LINE__, (msg)); \
+        _OBFinishPortingLater__(__FILE__, __LINE__, __PRETTY_FUNCTION__, (msg)); \
     } \
 } while(0)
 
@@ -165,7 +170,7 @@ static inline Class OBClassForPointer(id object)
     if (OBPointerIsClass(object))
 	return object;
     else
-	return object->isa;
+	return object_getClass(object);
 }
 
 static inline BOOL OBClassIsSubclassOfClass(Class subClass, Class superClass)
@@ -218,6 +223,29 @@ extern CFStringRef const OBBuildByCompilerVersion;
 #define DEFINE_NSSTRING(name) \
 	NSString * const name = NSSTRINGIFY(name)
 
+// Iterators over C arrays and literals. Useful for iterating over collections known at compile-time, like when (un)registering KVO keypaths. Syntax is similar to a regular for(.. in ..) statement; the first argument is a variable name that is visible within the scope of the block controlled by the OB_FOR_ALL or OB_FOR_IN statement. The subsequent arguments vary.
+
+// Helper macro that drives iteration of the variable named by OB_FOR_var_name over the array named by OB_FOR_array_name.
+#define OB_FOR_exprs(OB_FOR_var_name, OB_FOR_array_name) \
+        *OB_FOR_IN_end = &OB_FOR_array_name[sizeof(OB_FOR_array_name)/sizeof(OB_FOR_array_name[0])], /* Points one past the end of the array */ \
+        *OB_FOR_IN_curr = &OB_FOR_array_name[0], \
+        OB_FOR_var_name = OB_FOR_array_name[0]; \
+    OB_FOR_IN_curr < OB_FOR_IN_end ? (OB_FOR_var_name = *OB_FOR_IN_curr, 1) : 0; /* Avoid dereferencing pointer one past the end of the array, even if we never use it */ \
+    OB_FOR_IN_curr++
+    
+// OB_FOR_ALL takes a variable number of arguments (at least two) and iterates over all of them.
+// Ex:
+//     OB_FOR_ALL(i, 1, 2, 3)
+//       printf("%d", i);
+#define OB_FOR_ALL(var, one, ...) for(typeof(one) OB_FOR_ALL_array[] = { one, __VA_ARGS__ }, OB_FOR_exprs(var, OB_FOR_ALL_array))
+    
+// OB_FOR_IN takes a single array variable as an argument and iterates over its members.
+// Ex:
+//     int nums[] = {1, 2, 3};
+//     OB_FOR_IN(i, nums)
+//       printf("%d", i);
+#define OB_FOR_IN(var, array) for (typeof(array[0]) OB_FOR_exprs(var, array))
+
 // Emits a warning indicating that an obsolete method has been called.
 
 #define OB_WARN_OBSOLETE_METHOD \
@@ -255,14 +283,18 @@ __private_extern__ const char *_OBGeometryAdjustedSignature(const char *sig);
 #define PRIxNS PRI_NSInteger_LENGTH_MODIFIER "x"
 #define PRIXNS PRI_NSInteger_LENGTH_MODIFIER "X"
 
-// OSStatus is SInt32, which is int on 64-bit and long on 32-bit
+// OSStatus is SInt32, which is int on 64-bit and long on 32-bit. Similar problems hit CFStringEncoding and UnicodeScalarValue
 // note this is unaffected by NS_BUILD_32_LIKE_64, etc.
 #if __LP64__
     // On these platforms, UInt32 and SInt32 are (unsigned) int, and therefore so is OSStatus
     #define PRI_OSStatus "d"
+    #define PRI_CFStringEncoding "u"
+    #define PRI_UnicodeScalarValue "u"
 #else
     // On these platforms, UInt32 and SInt32 are (unsigned) long, and therefore so is OSStatus
     #define PRI_OSStatus "ld"
+    #define PRI_CFStringEncoding "lu"
+    #define PRI_UnicodeScalarValue "lu"
 #endif
     
 /* CFIndex is always a signed long as far as I know */

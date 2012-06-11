@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -12,26 +12,35 @@
 #import <OmniFileStore/OFSDocumentStoreDelegate.h>
 #import <OmniUI/OUIUndoBarButtonItem.h>
 #import <OmniUI/OUIBarButtonItemBackgroundType.h>
+#import <OmniUI/OUIDocumentConflictResolutionViewControllerDelegate.h>
 
-@class OFSDocumentStoreFileItem, OUIDocument, OUIMainViewController, OUIBarButtonItem;
+@class OFSDocumentStoreFileItem, OFSDocumentStoreScope;
+@class OUIDocument, OUIMainViewController, OUIBarButtonItem;
 
-@interface OUISingleDocumentAppController : OUIAppController <UITextFieldDelegate, OUIUndoBarButtonItemTarget, OFSDocumentStoreDelegate>
+typedef enum {
+    OUIDocumentAnimationTypeZoom,
+    OUIDocumentAnimationTypeDissolve,
+} OUIDocumentAnimationType;
+
+@interface OUISingleDocumentAppController : OUIAppController <UITextFieldDelegate, OUIUndoBarButtonItemTarget, OFSDocumentStoreDelegate, OUIDocumentConflictResolutionViewControllerDelegate>
 
 @property(nonatomic,retain) IBOutlet UIWindow *window;
 @property(nonatomic,retain) IBOutlet OUIMainViewController *mainViewController;
-@property(nonatomic,retain) IBOutlet UITextField *documentTitleTextField;
-@property(nonatomic,retain) IBOutlet UIBarButtonItem *documentTitleToolbarItem;
 
+@property(readonly) UIBarButtonItem *documentTitleToolbarItem;
 @property(readonly) UIBarButtonItem *closeDocumentBarButtonItem;
 @property(readonly) OUIUndoBarButtonItem *undoBarButtonItem;
 @property(readonly) UIBarButtonItem *infoBarButtonItem;
+@property(readonly) BOOL shouldOpenWelcomeDocumentOnFirstLaunch;
 
-- (NSString *)documentTypeForURL:(NSURL *)url;
 - (void)createNewDocumentAtURL:(NSURL *)url completionHandler:(void (^)(NSURL *url, NSError *error))completionHandler;
 - (IBAction)makeNewDocument:(id)sender;
 - (IBAction)closeDocument:(id)sender;
+- (void)closeDocumentWithAnimationType:(OUIDocumentAnimationType)animation completionHandler:(void (^)(void))completionHandler;
 
-// Returns the width the _documentTitleTextField should be set to while editing. A different width can be returned depending on isLandscape.
+- (void)documentDidDisableEnditing:(OUIDocument *)document; // Incoming iCloud edit on an open document
+
+// Returns the width the _documentTitleTextField should be set to while editing.
 // If overridden in sub-class, don't call super.
 - (CGFloat)titleTextFieldWidthForOrientation:(UIInterfaceOrientation)orientation;
 
@@ -42,7 +51,10 @@
 // Sample documents
 - (NSString *)sampleDocumentsDirectoryTitle;
 - (NSURL *)sampleDocumentsDirectoryURL;
-- (void)copySampleDocumentsToUserDocuments;
+- (void)copySampleDocumentsToUserDocumentsWithCompletionHandler:(void (^)(NSDictionary *nameToURL))completionHandler;
+- (void)copySampleDocumentsFromDirectoryURL:(NSURL *)sampleDocumentsDirectoryURL toScope:(OFSDocumentStoreScope *)scope stringTableName:(NSString *)stringTableName completionHandler:(void (^)(NSDictionary *nameToURL))completionHandler;
+
+- (NSString *)stringTableNameForSampleDocuments;
 - (NSString *)localizedNameForSampleDocumentNamed:(NSString *)documentName;
 - (NSURL *)URLForSampleDocumentNamed:(NSString *)name ofType:(NSString *)fileType;
 

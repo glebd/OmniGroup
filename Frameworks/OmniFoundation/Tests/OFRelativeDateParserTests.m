@@ -1,4 +1,4 @@
-// Copyright 2006-2008, 2010-2011 Omni Development, Inc. All rights reserved.
+// Copyright 2006-2008, 2010-2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -220,7 +220,6 @@ static BOOL _testRandomDate(OFRandomState *state, NSString *shortFormat, NSStrin
     // specifically set en_US, to make this pass if the user's current locale is ja_JP.
     [calendar setLocale:[[[NSLocale alloc] initWithLocaleIdentifier:@"en_US"] autorelease]];
 
-    [NSDateFormatter setDefaultFormatterBehavior:NSDateFormatterBehavior10_4]; 
     dateFormats = [[NSArray alloc] initWithObjects:@"MM/dd/yy", @"MM/dd/yyyy", @"dd/MM/yy", @"dd/MM/yyyy", @"yyyy-MM-dd", @"MM.dd.yy", @"dd.MM.yy", @"d-MMM-yy", nil];
     timeFormats = [[NSArray alloc] initWithObjects:@"hh:mm a", @"hh:mm:ss a", @"HH:mm:ss", @"HH:mm", @"HHmm", @"kk:mm", @"kkmm", nil];
 }
@@ -379,7 +378,7 @@ do { \
     expectedDate = _dateFromYear(2012, 12, 29, 0, 0, 0, calendar);
     parseDate( @"29 dec. 2012", expectedDate, baseDate, nil, nil ); 
 
-    NSString *dateString = [NSString stringWithFormat:@"29 d%Cc. 2012", 0xE9];
+    NSString *dateString = [NSString stringWithFormat:@"29 d%Cc. 2012", (unichar)0xE9];
     parseDate( dateString, expectedDate, baseDate, nil, nil ); 
 
     [[OFRelativeDateParser sharedParser] setLocale:savedLocale];
@@ -409,7 +408,7 @@ do { \
     expectedDate = _dateFromYear(2011, 7, 6, 0, 0, 0, calendar);
     parseDate( @"miercoles", expectedDate, baseDate, nil, nil ); 
 
-    NSString *dateString = [NSString stringWithFormat:@"mi%Crcoles", 0xE9];
+    NSString *dateString = [NSString stringWithFormat:@"mi%Crcoles", (unichar)0xE9];
     parseDate( dateString, expectedDate, baseDate, nil, nil ); 
     
 
@@ -433,7 +432,7 @@ do { \
     
     baseDate = _dateFromYear(2011, 6, 29, 0, 0, 0, calendar);
     expectedDate = _dateFromYear(2011, 7, 5, 0, 0, 0, calendar);
-    dateString = [NSString stringWithFormat:@"marted%C", 0xEC];
+    dateString = [NSString stringWithFormat:@"marted%C", (unichar)0xEC];
     parseDate( dateString, expectedDate, baseDate, nil, nil ); 
 
     baseDate = _dateFromYear(2011, 7, 5, 0, 0, 0, calendar);

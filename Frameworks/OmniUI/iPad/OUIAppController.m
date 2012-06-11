@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group.  All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -13,11 +13,11 @@
 #import <OmniAppKit/OAFontDescriptor.h>
 #import <OmniBase/OBRuntimeCheck.h>
 #import <OmniBase/system.h>
+#import <OmniFileStore/OFSDocumentStore.h>
+#import <OmniFileStore/OFSDocumentStoreFileItem.h>
 #import <OmniFoundation/NSString-OFURLEncoding.h>
 #import <OmniFoundation/OFBundleRegistry.h>
 #import <OmniFoundation/OFPreference.h>
-#import <OmniFileStore/OFSDocumentStore.h>
-#import <OmniFileStore/OFSDocumentStoreFileItem.h>
 #import <OmniUI/OUIAboutPanel.h>
 #import <OmniUI/OUIBarButtonItem.h>
 #import <OmniUI/OUIDocumentPicker.h>
@@ -30,11 +30,11 @@
 #import <sys/sysctl.h>
 
 #import "OUICredentials.h"
-#import "OUIEventBlockingView.h"
 #import "OUIParameters.h"
 #import "OUISoftwareUpdateController.h"
 #import "OUISyncMenuController.h"
 #import "UIViewController-OUIExtensions.h"
+#import "OUISingleDocumentAppController-Internal.h" // Terrible -- for _setupCloud:
 
 RCS_ID("$Id$");
 
@@ -48,9 +48,6 @@ RCS_ID("$Id$");
     UIBarButtonItem *_appMenuBarItem;
     OUIMenuController *_appMenuController;
     OUISyncMenuController *_syncMenuController;
-    
-    UIActivityIndicatorView *_activityIndicator;
-    UIView *_eventBlockingView;
     
 #if OUI_SOFTWARE_UPDATE_CHECK
     OUISoftwareUpdateController *_softwareUpdateController;
@@ -172,7 +169,6 @@ NSTimeInterval OUIElapsedTimeSinceProcessCreation(void)
     return _editableFileTypes;
 }
 
-// This must be thread-safe since it is called from a background thread by OFSDocumentStore item scanning, via our -documentStore:shouldIncludeFileItemWithFileType:
 - (BOOL)canViewFileTypeWithIdentifier:(NSString *)uti;
 {
     OBPRECONDITION(!uti || [uti isEqualToString:[uti lowercaseString]]); // our cache uses lowercase keys.
@@ -220,12 +216,24 @@ NSTimeInterval OUIElapsedTimeSinceProcessCreation(void)
         return;
     
     if (file)
-        NSLog(@"Error source file:%s line:%d", file, line);
+        NSLog(@"Error reported from %s:%d", file, line);
     NSLog(@"%@", [error toPropertyList]);
     
     // This delayed presentation avoids the "wait_fences: failed to receive reply: 10004003" lag/timeout which can happen depending on the context we start the reporting from.
     [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-        UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:[error localizedDescription] message:[error localizedRecoverySuggestion] delegate:nil cancelButtonTitle:cancelButtonTitle otherButtonTitles:nil] autorelease];
+        NSMutableArray *messages = [NSMutableArray array];
+
+        NSString *reason = [error localizedFailureReason];
+        if (![NSString isEmptyString:reason])
+            [messages addObject:reason];
+        
+        NSString *suggestion = [error localizedRecoverySuggestion];
+        if (![NSString isEmptyString:suggestion])
+            [messages addObject:suggestion];
+        
+        NSString *message = [messages componentsJoinedByString:@"\n"];
+        
+        UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:[error localizedDescription] message:message delegate:nil cancelButtonTitle:cancelButtonTitle otherButtonTitles:nil] autorelease];
         [alert show];
     }];
 }
@@ -269,14 +277,14 @@ NSTimeInterval OUIElapsedTimeSinceProcessCreation(void)
 {
     if (!_appMenuBarItem) {
         NSString *imageName = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"OUIAppMenuImage"];
-        if (!imageName) {
-            // This image says 'REPLACE' on it -- you should put something nicer in your app bundle.
+        if ([NSString isEmptyString:imageName])
             imageName = @"OUIAppMenu.png";
-        }
         
         UIImage *appMenuImage = [UIImage imageNamed:imageName];
         OBASSERT(appMenuImage);
         _appMenuBarItem = [[UIBarButtonItem alloc] initWithImage:appMenuImage style:UIBarButtonItemStylePlain target:self action:@selector(showAppMenu:)];
+        
+        _appMenuBarItem.accessibilityLabel = NSLocalizedStringFromTableInBundle(@"Help and Settings", @"OmniUI", OMNI_BUNDLE, @"Help and Settings toolbar item accessibility label.");
     }
     
     return _appMenuBarItem;
@@ -363,62 +371,6 @@ NSTimeInterval OUIElapsedTimeSinceProcessCreation(void)
     [controller setSubject:subject];
     [self.topViewController presentModalViewController:controller animated:YES];
     [controller autorelease];
-}
-
-- (BOOL)activityIndicatorVisible;
-{
-    return (_activityIndicator.superview != nil);
-}
-
-- (void)showActivityIndicatorInView:(UIView *)view;
-{
-    OBPRECONDITION(view);
-    OBPRECONDITION(view.window); // should already be on screen
-    
-    if (_activityIndicator || _eventBlockingView) {
-        OBASSERT_NOT_REACHED("Not supporting nested calls");
-        return;
-    }
-    
-    OUIBeginWithoutAnimating
-    {
-        _activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
-        _activityIndicator.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin|UIViewAutoresizingFlexibleRightMargin|UIViewAutoresizingFlexibleTopMargin|UIViewAutoresizingFlexibleBottomMargin;
-        
-        _eventBlockingView = [[OUIEventBlockingView alloc] initWithFrame:CGRectZero];
-        _eventBlockingView.opaque = NO;
-        _eventBlockingView.backgroundColor = nil;
-        
-        _activityIndicator.center = view.center;
-        
-        _activityIndicator.layer.zPosition = 2;
-        [_activityIndicator startAnimating];
-        _activityIndicator.hidden = YES;
-        
-        [view.superview addSubview:_activityIndicator];
-        
-        UIView *topView = self.topViewController.view;
-        OBASSERT(topView.window == view.window);
-        
-        _eventBlockingView.frame = topView.bounds;
-        [topView addSubview:_eventBlockingView];
-    }
-    OUIEndWithoutAnimating;
-    
-    // Just fade this in
-    _activityIndicator.hidden = NO;
-}
-
-- (void)hideActivityIndicator;
-{
-    [_eventBlockingView removeFromSuperview];
-    [_eventBlockingView release];
-    _eventBlockingView = nil;
-    
-    [_activityIndicator stopAnimating];
-    [_activityIndicator removeFromSuperview];
-    [_activityIndicator release];
-    _activityIndicator = nil;
 }
 
 - (void)_showWebViewWithURL:(NSURL *)url title:(NSString *)title;
@@ -551,6 +503,9 @@ static BOOL _dismissVisiblePopoverInFavorOfPopover(OUIAppController *self, UIPop
     if (_possiblyTappedButtonItem && _possiblyVisiblePopoverController.popoverVisible) {
         // Hiding a popover sets its allowed arrow directions to UIPopoverArrowDirectionUnknown under iOS 5, which causes an exception here on representation. So, we now remember the original argument passed in ourselves rather than calling -arrowDirections on the popover.
         [self presentPopover:_possiblyVisiblePopoverController fromBarButtonItem:_possiblyTappedButtonItem permittedArrowDirections:_possiblyVisiblePopoverControllerArrowDirections animated:NO];
+    } else if (_possiblyVisiblePopoverController.popoverVisible) {
+        // popover was shown with -presentPopover:fromRect:inView:permittedArrowDirections:animated: which does not automatically reposition on rotation, so going to dismiss this popover
+        [_possiblyVisiblePopoverController dismissPopoverAnimated:NO];
     }
 }
 
@@ -628,6 +583,11 @@ static BOOL _dismissVisiblePopoverInFavorOfPopover(OUIAppController *self, UIPop
 - (void)dismissPopoverAnimated:(BOOL)animated;
 {
     [self dismissPopover:_possiblyVisiblePopoverController animated:animated];
+}
+
+- (void)forgetPossiblyVisiblePopoverIfAlreadyHidden;
+{
+    _forgetPossiblyVisiblePopoverIfAlreadyHidden(self);
 }
 
 // Action Sheet Helpers
@@ -731,6 +691,14 @@ static BOOL _dismissVisiblePopoverInFavorOfPopover(OUIAppController *self, UIPop
     }
 }
 
+- (BOOL)isRunningRetailDemo;
+{
+#ifdef DEBUG_rachael
+    NSLog(@"demo mode = %d", [[OFPreference preferenceForKey:@"IPadRetailDemo"] boolValue]);
+#endif
+    return [[OFPreference preferenceForKey:@"IPadRetailDemo"] boolValue];
+}
+
 #pragma mark -
 #pragma mark UIApplicationDelegate
 
@@ -768,11 +736,6 @@ static BOOL _dismissVisiblePopoverInFavorOfPopover(OUIAppController *self, UIPop
     return [OFSDocumentStoreFileItem class];
 }
 
-- (BOOL)documentStore:(OFSDocumentStore *)store shouldIncludeFileItemWithFileType:(NSString *)fileType;
-{
-    return [self canViewFileTypeWithIdentifier:fileType];
-}
-
 - (NSString *)documentStoreBaseNameForNewFiles:(OFSDocumentStore *)store;
 {
     return NSLocalizedStringFromTableInBundle(@"My Document", @"OmniUI", OMNI_BUNDLE, @"Base name for newly created documents. This will have an number appended to it to make it unique.");
@@ -786,6 +749,11 @@ static BOOL _dismissVisiblePopoverInFavorOfPopover(OUIAppController *self, UIPop
 - (void)createNewDocumentAtURL:(NSURL *)url completionHandler:(void (^)(NSURL *url, NSError *error))completionHandler;
 {
     OBRequestConcreteImplementation(self, _cmd);
+}
+
+- (BOOL)documentStore:(OFSDocumentStore *)store canViewFileTypeWithIdentifier:(NSString *)uti;
+{
+    return [self canViewFileTypeWithIdentifier:uti];
 }
 
 #pragma mark - OUIMenuControllerDelegate

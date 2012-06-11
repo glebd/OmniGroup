@@ -1,4 +1,4 @@
-// Copyright 1998-2008, 2010-2011 Omni Development, Inc.  All rights reserved.
+// Copyright 1998-2008, 2010-2012 Omni Development, Inc.  All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -38,8 +38,16 @@ static OFController *sharedController = nil;
 static void _OFControllerCheckTerminated(void)
 {
     NSAutoreleasePool *p = [[NSAutoreleasePool alloc] init];
+    
     // Make sure that applications that use OFController actually call its -willTerminate.
-    OBASSERT(!sharedController || sharedController->status == OFControllerTerminatingStatus || sharedController->status == OFControllerNotInitializedStatus);
+    NSDictionary *environment = [[NSProcessInfo processInfo] environment];
+    if ([[[environment objectForKey:@"XCInjectBundle"] pathExtension] isEqualToString:@"octest"] &&
+        [[environment objectForKey:@"XCInjectBundleInto"] hasPrefix:[[NSBundle mainBundle] bundlePath]]) {
+        // We need to skip this check for otest host apps since +[SenTestProbe runTests:] just calls exit() rather than -terminate:.        
+    } else {
+        OBASSERT(!sharedController || sharedController->status == OFControllerTerminatingStatus || sharedController->status == OFControllerNotInitializedStatus);
+    }
+    
     [p drain];
 }
 #endif
@@ -397,10 +405,10 @@ static void _OFControllerCheckTerminated(void)
     NSString *numericBacktrace = [[exception userInfo] objectForKey:NSStackTraceKey];
     NSString *symbolicBacktrace = numericBacktrace ? [OFCopySymbolicBacktraceForNumericBacktrace(numericBacktrace) autorelease] : @"No numeric backtrace found";
     
-    NSString *report = [NSString stringWithFormat:@"Exception raised:\n---------------------------\nMask: 0x%08x\nName: %@\nReason: %@\nInfo:\n%@\nBacktrace:%@\n---------------------------",
+    NSString *report = [NSString stringWithFormat:@"Exception raised:\n---------------------------\nMask: 0x%08lx\nName: %@\nReason: %@\nInfo:\n%@\nBacktrace:%@\n---------------------------",
                         mask, [exception name], [exception reason], [exception userInfo], symbolicBacktrace];
 #else
-    NSString *report = [NSString stringWithFormat:@"Exception raised:\n---------------------------\nMask: 0x%08x\nName: %@\nReason: %@\nInfo:\n%@\n---------------------------",
+    NSString *report = [NSString stringWithFormat:@"Exception raised:\n---------------------------\nMask: 0x%08lx\nName: %@\nReason: %@\nInfo:\n%@\n---------------------------",
                         mask, [exception name], [exception reason], [exception userInfo]];
 #endif
     [self crashWithReport:report];

@@ -1,4 +1,4 @@
-// Copyright 2005, 2010-2011 Omni Development, Inc.  All rights reserved.
+// Copyright 2005, 2010-2012 Omni Development, Inc.  All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -17,89 +17,84 @@
 
 RCS_ID("$Id$");
 
-@interface OAWorkflow (Private)
-
-- (CFURLRef)_createLaunchApplicationURL;
+@interface OAWorkflow ()
+- (CFURLRef)_createLaunchApplicationURL CF_RETURNS_RETAINED;
 - (NSAppleEventDescriptor*)_launchParamsDescriptorWithFiles:(NSArray *)filePaths;
-
 @end
 
 
 @implementation OAWorkflow
 
-+ (OAWorkflow *)workflowWithContentsOfFile:(NSString *)path;
++ (OAWorkflow *)workflowWithContentsOfFile:(NSString *)path error:(NSError **)outError;
 {
-    return [[[self alloc] initWithContentsOfFile:path] autorelease];
+    return [[[self alloc] initWithContentsOfFile:path error:outError] autorelease];
 }
 
-+ (OAWorkflow *)workflowWithContentsOfURL:(NSURL *)url;
++ (OAWorkflow *)workflowWithContentsOfURL:(NSURL *)url error:(NSError **)outError;
 {
-    return [[[self alloc] initWithContentsOfURL:url] autorelease];
+    // Cast necessary for <http://llvm.org/bugs/show_bug.cgi?id=11577> "[self alloc]" in a class method not inferred to return an instance of that class
+    // NSAppleScript has this same selector, but with error being 'NSDictionary **'.
+    return [[(OAWorkflow *)[self alloc] initWithContentsOfURL:url error:outError] autorelease];
 }
 
-- (id)initWithContentsOfFile:(NSString *)path;
+- (id)initWithContentsOfFile:(NSString *)path error:(NSError **)outError;
 {
-    NSURL *url = [NSURL fileURLWithPath:path];
-    return [self initWithContentsOfURL:url];
+    return [self initWithContentsOfURL:[NSURL fileURLWithPath:path] error:outError];
 }
 
-- (id)initWithContentsOfURL:(NSURL *)url;
+- (id)initWithContentsOfURL:(NSURL *)url error:(NSError **)outError;
 {
+    OBPRECONDITION([url isFileURL]);
+    
     if (!(self = [super init]))
         return nil;
 
-    OBASSERT([url isFileURL]);
-    
-    if (![[NSFileManager defaultManager] fileExistsAtPath:[url path]]) {
+    NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:[url path] traverseLink:YES error:outError];
+    if (!attributes) {
         [self release];
         return nil;
     }
         
     _url = [url retain];
+    
     return self;
 }
 
-- (void)executeWithFiles: (NSArray*)filePaths;
+- (void)executeWithFiles:(NSArray*)filePaths;
 {
-    LSLaunchURLSpec spec;
-    OSStatus err;
-    
     CFURLRef launchApplicationURL = [self _createLaunchApplicationURL];
     if (launchApplicationURL == NULL) {
         NSString *exceptionReason = NSLocalizedStringFromTableInBundle(@"Couldn't locate Automator Launcher.app.", @"OmniAppKit", [OAWorkflow bundle], "workflow execution exception format string");
         [NSException raise:NSInternalInconsistencyException reason:exceptionReason];
+        return; // <http://llvm.org/bugs/show_bug.cgi?id=11959> (Add attribute for ObjC "raise" selector)
     }
 
-    spec.appURL			= (CFURLRef)launchApplicationURL;
-    spec.itemURLs		= nil;
+    LSLaunchURLSpec spec;
+    spec.appURL = launchApplicationURL;
+    spec.itemURLs = nil;
     spec.passThruParams	= [[self _launchParamsDescriptorWithFiles:filePaths] aeDesc];
-    spec.launchFlags	= kLSLaunchNewInstance;
-    spec.asyncRefCon	= nil;
+    spec.launchFlags = kLSLaunchNewInstance;
+    spec.asyncRefCon = nil;
     
-    err = LSOpenFromURLSpec( &spec, nil );
-    CFRelease(spec.appURL);
+    OSStatus err = LSOpenFromURLSpec( &spec, nil );
+    CFRelease(launchApplicationURL);
     
-    if( err ) {
+    if (err) {
         NSString *exceptionReason = NSLocalizedStringFromTableInBundle(@"Couldn't launch Automator Launcher.app.  LSOpenFromURLSpec returned %@", @"OmniAppKit", [OAWorkflow bundle], "workflow execution exception format string");
         [NSException raise:NSInternalInconsistencyException format:exceptionReason, OFOSStatusDescription(err)];
     }
     
 }
 
-@end
-
-@implementation OAWorkflow  (Private)
+#pragma mark - Private
 
 - (CFURLRef)_createLaunchApplicationURL;
 {
     CFURLRef appUrl = NULL;
-    LSFindApplicationForInfo(kLSUnknownCreator, (CFStringRef)@"com.apple.Automator_Launcher", NULL, NULL, &appUrl);
-    if (appUrl == NULL)
-	return nil;
-    
+    OSStatus rc = LSFindApplicationForInfo(kLSUnknownCreator, (CFStringRef)@"com.apple.Automator_Launcher", NULL, NULL, &appUrl);
+    if (rc != noErr)
+        return NULL;
     return appUrl;
-    
-    return nil;
 }
 
 - (NSAppleEventDescriptor*)_launchParamsDescriptorWithFiles:(NSArray*)filePaths;

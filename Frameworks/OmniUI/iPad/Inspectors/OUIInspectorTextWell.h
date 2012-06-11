@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group.  All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -8,6 +8,7 @@
 // $Id$
 
 #import <OmniUI/OUIInspectorWell.h>
+#import <OmniUI/OUICustomKeyboardProtocol.h>
 
 @class OUITextLayout, OUIInspectorTextWellEditor;
 
@@ -52,8 +53,7 @@ typedef enum {
     UITextSpellCheckingType _spellCheckingType;
 #endif
     UIKeyboardType _keyboardType;
-    UIView *_inputView;
-    UIView *_inputAccessoryView;
+    id <OUICustomKeyboard> _customKeyboard;
 }
 
 + (UIFont *)defaultLabelFont;
@@ -68,13 +68,13 @@ typedef enum {
 @property(nonatomic) UITextSpellCheckingType spellCheckingType;           // default is UITextSpellCheckingTypeDefault;
 #endif
 @property(nonatomic) UIKeyboardType keyboardType;                         // default is UIKeyboardTypeDefault
-@property(nonatomic, readwrite, retain) UIView *inputView;
-@property(nonatomic, readwrite, retain) UIView *inputAccessoryView;
+@property(nonatomic, readwrite, retain) id <OUICustomKeyboard> customKeyboard;
 
 @property(assign,nonatomic) BOOL editable;
 @property(readonly) BOOL editing;
 @property(copy,nonatomic) NSString *editingText; // The current contents of the field editor. Only valid when editing is true.
 - (void)startEditing;
+- (void)selectAll:(id)sender;
 
 @property(assign,nonatomic) UITextAlignment textAlignment; // Only useful for OUIInspectorTextWellStyleDefault
 

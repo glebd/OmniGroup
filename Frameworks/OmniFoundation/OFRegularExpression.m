@@ -1,4 +1,4 @@
-// Copyright 1997-2005, 2007-2008, 2010-2011 Omni Development, Inc.  All rights reserved.
+// Copyright 1997-2005, 2007-2008, 2010-2012 Omni Development, Inc.  All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -124,14 +124,14 @@ static inline void setNextPointer(ExpressionState *scan, const ExpressionState *
     while ((temp = nextState(scan)))
         scan = temp;
     
-    ptrdiff_t nextState;
+    ptrdiff_t nextStateIndex;
     if (scan->opCode == OpBack)
-        nextState = scan - value;
+        nextStateIndex = scan - value;
     else
-        nextState = value - scan;
+        nextStateIndex = value - scan;
     
-    OBASSERT(nextState < (1<<16));
-    scan->nextState = (unsigned)nextState;
+    OBASSERT(nextStateIndex < (1<<16));
+    scan->nextState = (unsigned)nextStateIndex;
 }
 
 static inline void setNextPointerOnArgument(ExpressionState *scan, const ExpressionState *value)
@@ -731,10 +731,10 @@ static inline BOOL unicodeSubstring(unichar *substring, unichar *string)
     NSMutableString *result = [NSMutableString string];
     
     while (operator != OpEnd) {
-        [result appendFormat:@"%2d:%@", state - program, [self descriptionOfState:state]];
+        [result appendFormat:@"%2td:%@", state - program, [self descriptionOfState:state]];
         next = nextState(state);
         if (next)
-            [result appendFormat:@"(%d)", next - program];
+            [result appendFormat:@"(%td)", next - program];
         else
             [result appendString:@"(0)"];
         operator = state->opCode;

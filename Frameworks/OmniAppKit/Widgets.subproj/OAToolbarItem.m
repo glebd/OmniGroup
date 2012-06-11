@@ -1,4 +1,4 @@
-// Copyright 2001-2005, 2007-2008, 2010 Omni Development, Inc.  All rights reserved.
+// Copyright 2001-2005, 2007-2008, 2010, 2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -16,14 +16,6 @@
 
 
 RCS_ID("$Id$");
-
-@interface OAToolbarItem (Private)
-- (void)_swapImage;
-- (void)_swapLabel;
-- (void)_swapToolTip;
-- (void)_swapAction;
-- (void)_tintsDidChange:(id)sender;
-@end
 
 @implementation OAToolbarItem
 
@@ -109,6 +101,22 @@ RCS_ID("$Id$");
         [self setEnabled:[_nonretained_delegate validateToolbarItem:self]];
 }
 
+// Called when the toolbar item is moved into the "overflow" menu (accessible via the double-chevron at the end of the toolbar).
+- (NSMenuItem *)menuFormRepresentation;
+{
+    NSMenuItem *menuFormRepresentation = [super menuFormRepresentation];
+    if (![menuFormRepresentation image]) {
+        NSImage *image = [[self image] copy];
+        [image setSize:NSMakeSize(16,16)];
+        [menuFormRepresentation setImage:image];
+        [image release];
+    }
+    [menuFormRepresentation setTarget:[self target]];
+    [menuFormRepresentation setAction:[self action]];
+    
+    return menuFormRepresentation;
+}
+
 #pragma mark NSCopying
 
 - (id)copyWithZone:(NSZone *)zone;
@@ -123,9 +131,7 @@ RCS_ID("$Id$");
     return copy;
 }
 
-@end
-
-@implementation OAToolbarItem (NotificationsDelegatesDatasources)
+#pragma mark - NotificationsDelegatesDatasources
 
 - (void)modifierFlagsChanged:(NSNotification *)note;
 {
@@ -147,9 +153,7 @@ RCS_ID("$Id$");
     } 
 }
 
-@end
-
-@implementation OAToolbarItem (Private)
+#pragma mark - Private
 
 - (void)_swapImage;
 {

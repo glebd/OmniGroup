@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group.  All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -187,6 +187,10 @@ void OUIInspectorWellStrokePathWithBorderColor(CGContextRef ctx)
 
 
 @implementation OUIInspectorWell
+{
+    UIView *_leftView;
+    UIView *_rightView;
+}
 
 static CGGradientRef NormalGradient = NULL;
 static CGGradientRef HighlightedGradient = NULL;
@@ -234,6 +238,14 @@ static CGGradientRef HighlightedGradient = NULL;
     return [UIImage imageNamed:@"OUINavigationArrow.png"];
 }
 
+- (void)dealloc;
+{
+    [_rightView release];
+    [_leftView release];
+    
+    [super dealloc];
+}
+
 @synthesize rounded = _rounded;
 - (void)setRounded:(BOOL)rounded;
 {
@@ -245,7 +257,7 @@ static CGGradientRef HighlightedGradient = NULL;
 
 - (BOOL)shouldDrawHighlighted;
 {
-    return !self.enabled || (self.highlighted && ([self allControlEvents] != 0));
+    return self.highlighted && ([self allControlEvents] != 0);
 }
 
 @synthesize backgroundType = _backgroundType;

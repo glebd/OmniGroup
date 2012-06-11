@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -183,6 +183,11 @@ static OUIScalingView *_scalingView(OUIScalingViewController *self)
 //    NSLog(@"initial offset = %@, inset %@", NSStringFromPoint(_scrollView.contentOffset), NSStringFromUIEdgeInsets(_scrollView.contentInset));
 }
 
+- (BOOL)isZooming;
+{
+    return _isZooming;
+}
+
 // Subclasses need to return the nominal size of the canvas; the size in CoreGraphics coordinates.
 - (CGSize)canvasSize;
 {
@@ -338,7 +343,7 @@ static OUIScalingView *_scalingView(OUIScalingViewController *self)
         zoomLabel = NSLocalizedStringFromTableInBundle(@"Fit", @"OmniUI", OMNI_BUNDLE, @"Overlay text when zoomed to fit screen");
     }
     else {
-        zoomLabel = [NSString stringWithFormat:@"%d%%", (NSUInteger)rint(snappedScale * 100)];
+        zoomLabel = [NSString stringWithFormat:@"%lu%%", (NSUInteger)rint(snappedScale * 100)];
     }
     
     OUIOverlayView *overlay = [OUIOverlayView sharedTemporaryOverlay];

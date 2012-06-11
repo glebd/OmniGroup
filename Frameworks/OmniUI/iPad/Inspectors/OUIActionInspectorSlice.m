@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -47,6 +47,7 @@ RCS_ID("$Id$");
 }
 
 @synthesize shouldEditOnLoad = _shouldEditOnLoad;
+@synthesize shouldSelectAllOnLoad = _shouldSelectAllOnLoad;
 
 - (OUIInspectorTextWell *)textWell;
 {
@@ -100,6 +101,8 @@ RCS_ID("$Id$");
     if (self.shouldEditOnLoad) {
         [[self textWell] startEditing];
         self.shouldEditOnLoad = NO;
+        if (self.shouldSelectAllOnLoad)
+            [_textWell selectAll:self];
     }
 }
 

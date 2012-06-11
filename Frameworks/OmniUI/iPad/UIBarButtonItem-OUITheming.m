@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -58,16 +58,16 @@ OBDEPRECATED_METHOD(-applyAppearance:); // -> -applyAppearanceWithBackgroundType
     // Set standard inset.
     UIEdgeInsets imageInset = (UIEdgeInsets){
         .top = 0,
-        .right = 6,
+        .right = 7,
         .bottom = 0,
-        .left = 6
+        .left = 7
     };
     
     // Set custom inset as needed.
     if (backgroundType == OUIBarButtonItemBackgroundTypeBack) {
         imageInset = (UIEdgeInsets){
             .top = 0,
-            .right = 6,
+            .right = 7,
             .bottom = 0,
             .left = 14
         };

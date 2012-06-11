@@ -1,4 +1,4 @@
-// Copyright 2004-2008, 2010-2011 Omni Development, Inc. All rights reserved.
+// Copyright 2004-2008, 2010-2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -112,18 +112,6 @@ RCS_ID("$Id$");
     }
     
     NSMutableString *buf = [[[NSMutableString alloc] init] autorelease];
-    [buf setString:@""]; [buf removeSurroundingWhitespace]; shouldBeEqual(buf, @"");
-    [buf setString:@" "]; [buf removeSurroundingWhitespace]; shouldBeEqual(buf, @"");
-    [buf setString:@"  "]; [buf removeSurroundingWhitespace]; shouldBeEqual(buf, @"");
-    [buf setString:@"\t\n\r "]; [buf removeSurroundingWhitespace]; shouldBeEqual(buf, @"");
-    [buf setString:@"foo "]; [buf removeSurroundingWhitespace]; shouldBeEqual(buf, @"foo");
-    [buf setString:@"foo  "]; [buf removeSurroundingWhitespace]; shouldBeEqual(buf, @"foo");
-    [buf setString:@" foo "]; [buf removeSurroundingWhitespace]; shouldBeEqual(buf, @"foo");
-    [buf setString:@"  foo "]; [buf removeSurroundingWhitespace]; shouldBeEqual(buf, @"foo");
-    [buf setString:@"o "]; [buf removeSurroundingWhitespace]; shouldBeEqual(buf, @"o");
-    [buf setString:@" f "]; [buf removeSurroundingWhitespace]; shouldBeEqual(buf, @"f");
-    [buf setString:@"foo"]; [buf removeSurroundingWhitespace]; shouldBeEqual(buf, @"foo");
-    [buf setString:@"  foo"]; [buf removeSurroundingWhitespace]; shouldBeEqual(buf, @"foo");
 
     for(i = 0; i < 3; i ++) {
         NSString *t = [NSString stringWithCharacters:2+s[i] length:sl[i]-4];
@@ -511,7 +499,7 @@ static NSString *fromutf8(const unsigned char *u, unsigned int length)
     
     NSError *error = nil;
     
-    NSString *scratchMe = [@"/tmp" stringByAppendingPathComponent:[NSString stringWithFormat:@"test-%@-%u-%u", NSUserName(), getpid(), time(NULL)]];
+    NSString *scratchMe = [@"/tmp" stringByAppendingPathComponent:[NSString stringWithFormat:@"test-%@-%u-%ld", NSUserName(), getpid(), time(NULL)]];
     OBShouldNotError([fm createDirectoryAtPath:scratchMe withIntermediateDirectories:NO attributes:nil error:&error]);
     NSString *sc0 = [scratchMe stringByAppendingPathComponent:@"zik"];
     OBShouldNotError([fm createDirectoryAtPath:sc0 withIntermediateDirectories:NO attributes:nil error:&error]);

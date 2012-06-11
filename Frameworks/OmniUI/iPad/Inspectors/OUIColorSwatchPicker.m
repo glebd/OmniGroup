@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -8,6 +8,7 @@
 #import <OmniUI/OUIColorSwatchPicker.h>
 
 #import "OUIColorSwatch.h"
+#import "OUIInspectorSlice.h" // -showDetails:
 
 #import <OmniQuartz/OQColor.h>
 
@@ -18,6 +19,9 @@ RCS_ID("$Id$");
 NSString * const OUIColorSwatchPickerTextBackgroundPalettePreferenceKey = @"OUIColorSwatchPickerTextBackgroundPalette";
 NSString * const OUIColorSwatchPickerTextColorPalettePreferenceKey = @"OUIColorSwatchPickerTextColorPalette";
 
+@interface OUIColorSwatchPicker ()
+- (IBAction)_swatchTouchDown:(id)sender;
+@end
 
 @implementation OUIColorSwatchPicker
 
@@ -175,7 +179,7 @@ static BOOL _colorsMatch(OQColor *color1, OQColor *color2)
 - (BOOL)hasMatchForColor:(OQColor *)color;
 {
     for (OUIColorSwatch *swatch in _colorSwatches)
-        if (_colorsMatch(swatch.color, _swatchSelectionColor))
+        if (_colorsMatch(swatch.color, color))
             return YES;
     return NO;
 }

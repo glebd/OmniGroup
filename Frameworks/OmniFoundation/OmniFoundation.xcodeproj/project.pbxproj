@@ -223,6 +223,10 @@
 		344D09E31190D6D800264D89 /* OFXMLWhitespaceBehavior.m in Sources */ = {isa = PBXBuildFile; fileRef = 344F2E1B050ABDE60097A113 /* OFXMLWhitespaceBehavior.m */; };
 		344D0A8A1190DB4700264D89 /* OFErrors.m in Sources */ = {isa = PBXBuildFile; fileRef = 344D0A891190DB4700264D89 /* OFErrors.m */; };
 		344D0AAA1190DDE400264D89 /* OFErrors.m in Sources */ = {isa = PBXBuildFile; fileRef = 344D0A891190DB4700264D89 /* OFErrors.m */; };
+		345272C714F092EF003151CA /* OFBindingPoint.h in Headers */ = {isa = PBXBuildFile; fileRef = 345272C514F092EF003151CA /* OFBindingPoint.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		345272C814F092EF003151CA /* OFBindingPoint.m in Sources */ = {isa = PBXBuildFile; fileRef = 345272C614F092EF003151CA /* OFBindingPoint.m */; };
+		345272CA14F09313003151CA /* OFBindingPoint.h in Headers */ = {isa = PBXBuildFile; fileRef = 345272C514F092EF003151CA /* OFBindingPoint.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		345272CB14F0931B003151CA /* OFBindingPoint.m in Sources */ = {isa = PBXBuildFile; fileRef = 345272C614F092EF003151CA /* OFBindingPoint.m */; };
 		3455B53011116CCA00074705 /* NSFileManager-OFSimpleExtensions.h in Headers */ = {isa = PBXBuildFile; fileRef = 3455B52E11116CCA00074705 /* NSFileManager-OFSimpleExtensions.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		3455B53111116CCA00074705 /* NSFileManager-OFSimpleExtensions.m in Sources */ = {isa = PBXBuildFile; fileRef = 3455B52F11116CCA00074705 /* NSFileManager-OFSimpleExtensions.m */; };
 		34562BE911AB1278005F186D /* OFDateFormatConversion.h in Headers */ = {isa = PBXBuildFile; fileRef = 34562BE711AB1278005F186D /* OFDateFormatConversion.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -336,7 +340,6 @@
 		4A4E061708AA72B10098FF0F /* OFFastMutableData.h in Headers */ = {isa = PBXBuildFile; fileRef = 00E51CA8FE8AAEA611C9CC38 /* OFFastMutableData.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		4A4E061808AA72B10098FF0F /* OFHeap.h in Headers */ = {isa = PBXBuildFile; fileRef = 00E51CA9FE8AAEA611C9CC38 /* OFHeap.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		4A4E061908AA72B10098FF0F /* OFKnownKeyDictionaryTemplate.h in Headers */ = {isa = PBXBuildFile; fileRef = 00E51CAAFE8AAEA611C9CC38 /* OFKnownKeyDictionaryTemplate.h */; settings = {ATTRIBUTES = (Public, ); }; };
-		4A4E061A08AA72B10098FF0F /* OFLowercaseStringCache.h in Headers */ = {isa = PBXBuildFile; fileRef = 1872811EFF5E2339C697A12F /* OFLowercaseStringCache.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		4A4E061B08AA72B10098FF0F /* OFMatrix.h in Headers */ = {isa = PBXBuildFile; fileRef = 00E51CABFE8AAEA611C9CC38 /* OFMatrix.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		4A4E061C08AA72B10098FF0F /* OFMultiValueDictionary.h in Headers */ = {isa = PBXBuildFile; fileRef = 00E51CACFE8AAEA611C9CC38 /* OFMultiValueDictionary.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		4A4E061D08AA72B10098FF0F /* OFMutableKnownKeyDictionary.h in Headers */ = {isa = PBXBuildFile; fileRef = 00E51CADFE8AAEA611C9CC38 /* OFMutableKnownKeyDictionary.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -475,7 +478,6 @@
 		4A4E06C508AA72B10098FF0F /* OFFastMutableData.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E51C8DFE8AAEA611C9CC38 /* OFFastMutableData.m */; settings = {ATTRIBUTES = (); }; };
 		4A4E06C608AA72B10098FF0F /* OFHeap.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E51C8EFE8AAEA611C9CC38 /* OFHeap.m */; settings = {ATTRIBUTES = (); }; };
 		4A4E06C708AA72B10098FF0F /* OFKnownKeyDictionaryTemplate.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E51C8FFE8AAEA611C9CC38 /* OFKnownKeyDictionaryTemplate.m */; settings = {ATTRIBUTES = (); }; };
-		4A4E06C808AA72B10098FF0F /* OFLowercaseStringCache.m in Sources */ = {isa = PBXBuildFile; fileRef = 1872811FFF5E2339C697A12F /* OFLowercaseStringCache.m */; settings = {ATTRIBUTES = (); }; };
 		4A4E06C908AA72B10098FF0F /* OFMatrix.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E51C90FE8AAEA611C9CC38 /* OFMatrix.m */; settings = {ATTRIBUTES = (); }; };
 		4A4E06CA08AA72B10098FF0F /* OFMultiValueDictionary.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E51C91FE8AAEA611C9CC38 /* OFMultiValueDictionary.m */; settings = {ATTRIBUTES = (); }; };
 		4A4E06CB08AA72B10098FF0F /* OFMutableKnownKeyDictionary.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E51C92FE8AAEA611C9CC38 /* OFMutableKnownKeyDictionary.m */; settings = {ATTRIBUTES = (); }; };
@@ -639,6 +641,8 @@
 		5F0714151461B58E00A2481F /* OFDynamicStoreListener.h in Headers */ = {isa = PBXBuildFile; fileRef = 5FA495691211DE83006BB2BF /* OFDynamicStoreListener.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		5F24DAD8146B09A900A43E30 /* OFDynamicStoreListener.m in Sources */ = {isa = PBXBuildFile; fileRef = 5FA4956A1211DE83006BB2BF /* OFDynamicStoreListener.m */; };
 		5F24DAD9146B09CA00A43E30 /* OFDynamicStoreListenerPrivate.m in Sources */ = {isa = PBXBuildFile; fileRef = 5FA4956C1211DE83006BB2BF /* OFDynamicStoreListenerPrivate.m */; };
+		5F3DCBDA14B78AC8001C56CF /* NSKeyValueObserving-OFExtensions.h in Headers */ = {isa = PBXBuildFile; fileRef = 5F3DCBD914B78AC8001C56CF /* NSKeyValueObserving-OFExtensions.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		5F3DCBDB14B78AC8001C56CF /* NSKeyValueObserving-OFExtensions.h in Headers */ = {isa = PBXBuildFile; fileRef = 5F3DCBD914B78AC8001C56CF /* NSKeyValueObserving-OFExtensions.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		5FEC029B1456323D002E9BBF /* OFXMLReader.h in Headers */ = {isa = PBXBuildFile; fileRef = 343BA6FC0F740AB100329C2F /* OFXMLReader.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		5FEC029D14563462002E9BBF /* OFXMLReader.m in Sources */ = {isa = PBXBuildFile; fileRef = 343BA6FD0F740AB100329C2F /* OFXMLReader.m */; };
 		6C391FA4114C1B4E0049E917 /* OFNetChangeNotifier.h in Headers */ = {isa = PBXBuildFile; fileRef = 6C391FA2114C1B4E0049E917 /* OFNetChangeNotifier.h */; settings = {ATTRIBUTES = (Public, ); }; };
@@ -1023,8 +1027,6 @@
 		16ACF159FFC40A50C697A14E /* English */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.strings; name = English; path = English.lproj/OmniFoundation.strings; sourceTree = "<group>"; };
 		1872811AFF5DF33FC697A12F /* CFDictionary-OFExtensions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "CFDictionary-OFExtensions.h"; sourceTree = "<group>"; };
 		1872811BFF5DF33FC697A12F /* CFDictionary-OFExtensions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "CFDictionary-OFExtensions.m"; sourceTree = "<group>"; };
-		1872811EFF5E2339C697A12F /* OFLowercaseStringCache.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OFLowercaseStringCache.h; sourceTree = "<group>"; };
-		1872811FFF5E2339C697A12F /* OFLowercaseStringCache.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OFLowercaseStringCache.m; sourceTree = "<group>"; };
 		18728122FF5E2785C697A12F /* CFSet-OFExtensions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "CFSet-OFExtensions.h"; sourceTree = "<group>"; };
 		18728123FF5E2785C697A12F /* CFSet-OFExtensions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "CFSet-OFExtensions.m"; sourceTree = "<group>"; };
 		1952E654FF24F0A8C697A146 /* OFStringDecoder.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OFStringDecoder.m; sourceTree = "<group>"; };
@@ -1184,6 +1186,8 @@
 		344F2EA0050ADFBF0097A113 /* OFXMLString.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OFXMLString.h; sourceTree = "<group>"; };
 		344F2EA1050ADFBF0097A113 /* OFXMLString.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OFXMLString.m; sourceTree = "<group>"; };
 		345069110D747ED4004B40C2 /* OFCrashOnExceptionTest */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = OFCrashOnExceptionTest; sourceTree = BUILT_PRODUCTS_DIR; };
+		345272C514F092EF003151CA /* OFBindingPoint.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OFBindingPoint.h; sourceTree = "<group>"; };
+		345272C614F092EF003151CA /* OFBindingPoint.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OFBindingPoint.m; sourceTree = "<group>"; };
 		3455B52E11116CCA00074705 /* NSFileManager-OFSimpleExtensions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSFileManager-OFSimpleExtensions.h"; sourceTree = "<group>"; };
 		3455B52F11116CCA00074705 /* NSFileManager-OFSimpleExtensions.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "NSFileManager-OFSimpleExtensions.m"; sourceTree = "<group>"; };
 		34562BE711AB1278005F186D /* OFDateFormatConversion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OFDateFormatConversion.h; sourceTree = "<group>"; };
@@ -1307,6 +1311,7 @@
 		4AF8309606A637B400964FAA /* libz.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libz.dylib; path = /usr/lib/libz.dylib; sourceTree = "<absolute>"; };
 		5A1D8CE10017C8DCC697A1D6 /* OFCharacterSet.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OFCharacterSet.h; sourceTree = "<group>"; };
 		5A1D8CE20017C8DCC697A1D6 /* OFCharacterSet.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OFCharacterSet.m; sourceTree = "<group>"; };
+		5F3DCBD914B78AC8001C56CF /* NSKeyValueObserving-OFExtensions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "NSKeyValueObserving-OFExtensions.h"; sourceTree = "<group>"; };
 		5FA495691211DE83006BB2BF /* OFDynamicStoreListener.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OFDynamicStoreListener.h; sourceTree = "<group>"; };
 		5FA4956A1211DE83006BB2BF /* OFDynamicStoreListener.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = OFDynamicStoreListener.m; sourceTree = "<group>"; };
 		5FA4956B1211DE83006BB2BF /* OFDynamicStoreListenerPrivate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OFDynamicStoreListenerPrivate.h; sourceTree = "<group>"; };
@@ -1590,8 +1595,6 @@
 				E218272F1456049B0097BBFE /* OFIndexPath.m */,
 				00E51CAAFE8AAEA611C9CC38 /* OFKnownKeyDictionaryTemplate.h */,
 				00E51C8FFE8AAEA611C9CC38 /* OFKnownKeyDictionaryTemplate.m */,
-				1872811EFF5E2339C697A12F /* OFLowercaseStringCache.h */,
-				1872811FFF5E2339C697A12F /* OFLowercaseStringCache.m */,
 				00E51CABFE8AAEA611C9CC38 /* OFMatrix.h */,
 				00E51C90FE8AAEA611C9CC38 /* OFMatrix.m */,
 				00E51CACFE8AAEA611C9CC38 /* OFMultiValueDictionary.h */,
@@ -1742,6 +1745,7 @@
 				A2C67D820D91A4BB00BD7911 /* NSIndexSet-OFExtensions.m */,
 				00E51D33FE8AAEA611C9CC38 /* NSInvocation-OFExtensions.h */,
 				00E51D16FE8AAEA611C9CC38 /* NSInvocation-OFExtensions.m */,
+				5F3DCBD914B78AC8001C56CF /* NSKeyValueObserving-OFExtensions.h */,
 				00E51D34FE8AAEA611C9CC38 /* NSMutableArray-OFExtensions.h */,
 				00E51D17FE8AAEA611C9CC38 /* NSMutableArray-OFExtensions.m */,
 				34E9110B05FE19A40097A113 /* NSMutableAttributedString-OFExtensions.h */,
@@ -1988,6 +1992,8 @@
 				9FE23DFE0AB0EBC600E3D795 /* OFRelativeDateParser.m */,
 				34850C820A71491100675995 /* OFBinding.h */,
 				34850C830A71491100675995 /* OFBinding.m */,
+				345272C514F092EF003151CA /* OFBindingPoint.h */,
+				345272C614F092EF003151CA /* OFBindingPoint.m */,
 				00E51C6FFE8AAEA611C9CC38 /* OFBundledClass.h */,
 				00E51C5FFE8AAEA611C9CC38 /* OFBundledClass.m */,
 				00E51C70FE8AAEA611C9CC38 /* OFBundleRegistry.h */,
@@ -2453,6 +2459,7 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5F3DCBDB14B78AC8001C56CF /* NSKeyValueObserving-OFExtensions.h in Headers */,
 				344D08F71190D4ED00264D89 /* CFArray-OFExtensions.h in Headers */,
 				344D08FA1190D4F900264D89 /* CFData-OFFileIO.h in Headers */,
 				344D08FB1190D4FB00264D89 /* CFData-OFCompression.h in Headers */,
@@ -2555,6 +2562,7 @@
 				273257E31448C25A00A26568 /* OFUTI.h in Headers */,
 				E22C340714577CBA0036797A /* OFCompletionMatch.h in Headers */,
 				34A0DEC21457E79D000B1157 /* OFIndexPath.h in Headers */,
+				345272CA14F09313003151CA /* OFBindingPoint.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2562,6 +2570,7 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5F3DCBDA14B78AC8001C56CF /* NSKeyValueObserving-OFExtensions.h in Headers */,
 				4ADA019A093F3EEE00F5F615 /* OFVersionNumber.h in Headers */,
 				4A4E060008AA72B10098FF0F /* OFAddScriptCommand.h in Headers */,
 				4A4E060108AA72B10098FF0F /* OFRemoveScriptCommand.h in Headers */,
@@ -2585,7 +2594,6 @@
 				4A4E061708AA72B10098FF0F /* OFFastMutableData.h in Headers */,
 				4A4E061808AA72B10098FF0F /* OFHeap.h in Headers */,
 				4A4E061908AA72B10098FF0F /* OFKnownKeyDictionaryTemplate.h in Headers */,
-				4A4E061A08AA72B10098FF0F /* OFLowercaseStringCache.h in Headers */,
 				4A4E061B08AA72B10098FF0F /* OFMatrix.h in Headers */,
 				4A4E061C08AA72B10098FF0F /* OFMultiValueDictionary.h in Headers */,
 				4A4E061D08AA72B10098FF0F /* OFMutableKnownKeyDictionary.h in Headers */,
@@ -2771,6 +2779,7 @@
 				273257D61448B56000A26568 /* OFUTI.h in Headers */,
 				E22C340514577CBA0036797A /* OFCompletionMatch.h in Headers */,
 				E22C35AE14587A780036797A /* OFIndexPath.h in Headers */,
+				345272C714F092EF003151CA /* OFBindingPoint.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3005,7 +3014,7 @@
 		00E51C5BFE8AAEA611C9CC38 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastUpgradeCheck = 0420;
+				LastUpgradeCheck = 0430;
 			};
 			buildConfigurationList = 4AD1C16408A9803A00C087FE /* Build configuration list for PBXProject "OmniFoundation" */;
 			compatibilityVersion = "Xcode 3.2";
@@ -3215,6 +3224,7 @@
 				5FEC029D14563462002E9BBF /* OFXMLReader.m in Sources */,
 				34A0DEC31457E7A0000B1157 /* OFIndexPath.m in Sources */,
 				E22C35B114587A8A0036797A /* OFCompletionMatch.m in Sources */,
+				345272CB14F0931B003151CA /* OFBindingPoint.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3252,7 +3262,6 @@
 				4A4E06C508AA72B10098FF0F /* OFFastMutableData.m in Sources */,
 				4A4E06C608AA72B10098FF0F /* OFHeap.m in Sources */,
 				4A4E06C708AA72B10098FF0F /* OFKnownKeyDictionaryTemplate.m in Sources */,
-				4A4E06C808AA72B10098FF0F /* OFLowercaseStringCache.m in Sources */,
 				4A4E06C908AA72B10098FF0F /* OFMatrix.m in Sources */,
 				4A4E06CA08AA72B10098FF0F /* OFMultiValueDictionary.m in Sources */,
 				4A4E06CB08AA72B10098FF0F /* OFMutableKnownKeyDictionary.m in Sources */,
@@ -3426,6 +3435,7 @@
 				E22C35B214587A8A0036797A /* OFCompletionMatch.m in Sources */,
 				5F24DAD8146B09A900A43E30 /* OFDynamicStoreListener.m in Sources */,
 				5F24DAD9146B09CA00A43E30 /* OFDynamicStoreListenerPrivate.m in Sources */,
+				345272C814F092EF003151CA /* OFBindingPoint.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -4005,8 +4015,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4AB8F38B08AD0CA100DBB061 /* Omni-Global-Debug.xcconfig */;
 			buildSettings = {
-				"GCC_ENABLE_OBJC_GC[sdk=iphoneos*][arch=*]" = unsupported;
-				"GCC_ENABLE_OBJC_GC[sdk=macosx*][arch=*]" = supported;
 				HEADER_SEARCH_PATHS = (
 					"$(value)",
 					/usr/include/libxml2,
@@ -4018,8 +4026,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4AB8F38C08AD0CA100DBB061 /* Omni-Global-Release.xcconfig */;
 			buildSettings = {
-				"GCC_ENABLE_OBJC_GC[sdk=iphoneos*][arch=*]" = unsupported;
-				"GCC_ENABLE_OBJC_GC[sdk=macosx*][arch=*]" = supported;
 				HEADER_SEARCH_PATHS = (
 					"$(value)",
 					/usr/include/libxml2,
@@ -4031,8 +4037,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 4AB8F38A08AD0CA100DBB061 /* Omni-Global-Coverage.xcconfig */;
 			buildSettings = {
-				"GCC_ENABLE_OBJC_GC[sdk=iphoneos*][arch=*]" = unsupported;
-				"GCC_ENABLE_OBJC_GC[sdk=macosx*][arch=*]" = supported;
 				HEADER_SEARCH_PATHS = (
 					"$(value)",
 					/usr/include/libxml2,

@@ -1,4 +1,4 @@
-// Copyright 1997-2011 Omni Development, Inc. All rights reserved.
+// Copyright 1997-2012 Omni Development, Inc. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -12,6 +12,7 @@
 #import <AppKit/AppKit.h>
 #import <OmniBase/OmniBase.h>
 #import <OmniFoundation/OmniFoundation.h>
+#import <OmniAppKit/NSResponder-OAExtensions.h>
 
 #import <Carbon/Carbon.h>
 #import <ExceptionHandling/NSExceptionHandler.h>
@@ -31,9 +32,7 @@ NSString * const OAFlagsChangedQueuedNotification = @"OAFlagsChangedNotification
 
 @interface OAApplication (/*Private*/)
 + (void)_setupOmniApplication;
-+ (NSUInteger)_currentModifierFlags DEPRECATED_ATTRIBUTE;
 - (void)processMouseButtonsChangedEvent:(NSEvent *)event;
-+ (void)_activateFontsFromAppWrapper;
 - (void)_scheduleModalPanelWithInvocation:(NSInvocation *)modalInvocation;
 - (void)_rescheduleModalPanel:(NSTimer *)timer;
 @end
@@ -105,7 +104,6 @@ static NSImage *CautionIcon = nil;
     windowsForSheets = NSCreateMapTable(NSObjectMapKeyCallBacks, NSObjectMapValueCallBacks, 0);
     sheetQueue = [[NSMutableArray alloc] init];
 
-    [[OFController sharedController] addObserver:(id)[OAApplication class]];
     [super finishLaunching];
 
     [[self class] workAroundCocoaScriptingLazyInitBug];
@@ -407,7 +405,7 @@ static void _applyFullSearch(OAApplication *self, SEL theAction, id theTarget, i
 
 - (id)targetForAction:(SEL)theAction to:(id)theTarget from:(id)sender;
 {
-    if (!OATargetSelection)
+    if (!theAction || !OATargetSelection)
         return [super targetForAction:theAction to:theTarget from:sender];
     
     __block id target = nil;
@@ -418,7 +416,7 @@ static void _applyFullSearch(OAApplication *self, SEL theAction, id theTarget, i
         DEBUG_TARGET_SELECTION(@" ... trying %@", [object shortDescription]);
         id responsible = [object responsibleTargetForAction:theAction sender:sender];
         
-#if defined(MAC_OS_X_VERSION_10_7) && MAC_OS_X_VERSION_10_7 >= MAC_OS_X_VERSION_MIN_REQUIRED
+#if defined(MAC_OS_X_VERSION_10_7) && MAC_OS_X_VERSION_10_7 <= MAC_OS_X_VERSION_MIN_REQUIRED
         // Use the supplementalTargetForAction mechanism that was introduced in 10.7 to look for delegates and other helper objects attached to responders, but still use our OATargetSelection approach of requiring objects to override responsibleTargetForAction if they wish to terminate the search.
         if (!responsible && [object isKindOfClass:[NSResponder class]]) {
             responsible = [(NSResponder *)object supplementalTargetForAction:theAction sender:sender];
@@ -594,18 +592,6 @@ static void _applyFullSearch(OAApplication *self, SEL theAction, id theTarget, i
 - (BOOL)scrollWheelButtonIsDown;
 {
     return [self mouseButtonIsDownAtIndex:2];
-}
-
-- (NSUInteger)currentModifierFlags;
-{
-    OBFinishPortingLater("This method is deprecated. It returns the out-of-stream modifier flags. Make sure that's what you want, then replace your call to this method with one to +[NSEvent modifierFlags].");
-    return [[self class] _currentModifierFlags];
-}
-
-- (BOOL)checkForModifierFlags:(NSUInteger)flags;
-{
-    OBFinishPortingLater("This method returns the out-of-stream modifier flags. Make sure that's what you want, then replace your call to this method with one to +[NSEvent(OAExtensions) checkForAnyModifierFlags:]");
-    return ([self currentModifierFlags] & flags) != 0;
 }
 
 - (NSUInteger)launchModifierFlags;
@@ -818,15 +804,7 @@ static void _applyFullSearch(OAApplication *self, SEL theAction, id theTarget, i
     }
 }
 
-#pragma mark -
-#pragma mark OFController observer informal protocol
-
-+ (void)controllerStartedRunning:(OFController *)controller;
-{
-    [self _activateFontsFromAppWrapper];
-}
-
-#pragma mark AppleScript
+#pragma mark - AppleScript
 
 static void _addPreferenceForKey(const void *value, void *context)
 {
@@ -945,37 +923,9 @@ static NSComparisonResult _compareByKey(id obj1, id obj2, void *context)
     CautionIcon = [[NSImage imageNamed:@"OACautionIcon" inBundleForClass:[OAApplication class]] retain];
 }
 
-+ (NSUInteger)_currentModifierFlags;
-{
-    OB_WARN_OBSOLETE_METHOD; // Replaced by +[NSEvent modifierFlags], which also includes device-dependent flags
-    NSUInteger flags = 0;
-    UInt32 currentKeyModifiers = GetCurrentKeyModifiers();
-    if (currentKeyModifiers & cmdKey)
-        flags |= NSCommandKeyMask;
-    if (currentKeyModifiers & shiftKey)
-        flags |= NSShiftKeyMask;
-    if (currentKeyModifiers & optionKey)
-        flags |= NSAlternateKeyMask;
-    if (currentKeyModifiers & controlKey)
-        flags |= NSControlKeyMask;
-    
-    return flags;
-}
-
 - (void)processMouseButtonsChangedEvent:(NSEvent *)event;
 {
     mouseButtonState = [event data2];
-}
-
-+ (void)_activateFontsFromAppWrapper;
-{
-    FSRef myFSRef;
-    
-    NSString *fontsDirectory = [[[[NSBundle mainBundle] resourcePath] stringByDeletingLastPathComponent] stringByAppendingPathComponent:@"Fonts"];
-    if ([[NSFileManager defaultManager] fileExistsAtPath:fontsDirectory])
-        if (FSPathMakeRef((UInt8 *)[fontsDirectory fileSystemRepresentation], &myFSRef, NULL) == noErr) {
-            ATSFontActivateFromFileReference(&myFSRef, kATSFontContextLocal, kATSFontFormatUnspecified, NULL, kATSOptionFlagsDefault, NULL);
-        }
 }
 
 - (void)_scheduleModalPanelWithInvocation:(NSInvocation *)modalInvocation;

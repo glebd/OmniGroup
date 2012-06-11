@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group. All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -11,7 +11,10 @@
 #import <OmniUI/OUIInspectorPane.h>
 #import <OmniUI/OUIStackedSlicesInspectorPane.h>
 #import <OmniUI/UIView-OUIExtensions.h>
+
 #import "OUICustomSubclass.h"
+#import "OUIInspectorSlice-Internal.h"
+#import "OUIParameters.h"
 
 RCS_ID("$Id$");
 
@@ -123,6 +126,15 @@ static CGFloat _borderOffsetFromEdge(UIView *view, CGRectEdge fromEdge)
 {
     // The goal is to match the inset of grouped table view cells (for cases where we have controls next to one), though individual inspectors may need to adjust this.
     return 9 - _borderOffsetFromEdge(self.view, CGRectMinXEdge); // Assumes the left/right border offsets are the same, which they usually are with shadows being done vertically.
+}
+
+- (CGFloat)minimumHeight; // When the view has UIViewAutoresizingFlexibleHeight, the minimum height the slice can have. Defaults to kOUIInspectorWellHeight.
+{
+    // Shouldn't be called unless we have a height sizeable view.
+    OBPRECONDITION([self isViewLoaded]);
+    OBPRECONDITION(self.view.autoresizingMask & UIViewAutoresizingFlexibleHeight);
+    
+    return kOUIInspectorWellHeight;
 }
 
 - (void)sizeChanged;

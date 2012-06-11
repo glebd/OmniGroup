@@ -1,4 +1,4 @@
-// Copyright 2010-2011 The Omni Group.  All rights reserved.
+// Copyright 2010-2012 The Omni Group. All rights reserved.
 //
 // This software may only be used and reproduced according to the
 // terms in the file OmniSourceLicense.html, which should be
@@ -56,6 +56,13 @@ static BOOL _viewsCompatible(UIView *self, UIView *otherView)
 #endif
         return YES;
     }
+    
+#ifdef OMNI_ASSERTIONS_ON
+    // Bail on the text selection loupe for standard UIKit controls. Not our problem.
+    if ([self isKindOfClass:NSClassFromString(@"UITextRangeView")] ||
+        [otherView isKindOfClass:NSClassFromString(@"UITextRangeView")])
+        return YES;
+#endif
     
     // "Otherwise, both view and the receiver must belong to the same UIWindow object."
     // We just require that they have a common ancestor view, though.
@@ -330,7 +337,9 @@ static void _addShadowEdge(UIView *self, const OUILoadedImage *imageInfo, NSMuta
     edge.layer.needsDisplayOnBoundsChange = NO;
     [self addSubview:edge];
     
-    edge.layer.contents = (id)[imageInfo->image CGImage];
+    UIImage *image = imageInfo->image;
+    edge.layer.contents = (id)[image CGImage];
+    edge.layer.contentsScale = [image scale];
     
     // Exactly one dimension should have an odd pixel count. This center column or row will get stretched via the contentsCenter property on the layer.
 #ifdef OMNI_ASSERTIONS_ON
